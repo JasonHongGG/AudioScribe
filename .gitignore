@@ -1,0 +1,4 @@
+audio/*
+output/*
+!audio/.gitkeep
+!output/.gitkeep
