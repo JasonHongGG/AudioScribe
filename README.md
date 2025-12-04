@@ -1,5 +1,12 @@
 # AudioScribe
 
+## 使用方式
+
+1. 將音檔放入 `audio/` 資料夾。
+2. 執行 `app.py`，程式會自動處理音檔並將結果輸出至 `output/` 資料夾。
+
+
+## 額外須知 (疑難雜症)
 ### cudnn_ops64_9.dll
 ```
 pip install "nvidia-cudnn-cu12==9.1.0.70"
