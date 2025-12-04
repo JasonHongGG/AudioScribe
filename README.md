@@ -22,8 +22,11 @@ export PATH="$VIRTUAL_ENV/Lib/site-packages/nvidia/cublas/bin:$PATH"
 ```
 
 ### 套件環境變數設定
-在 .venv/Scripts/activate 檔案中直接加入
 
+> 在 .venv/Scripts/activate 檔案中直接加入在 **最後**
+
+```
 export PATH="$VIRTUAL_ENV/Lib/site-packages/nvidia/cublas/bin:$PATH"
 
 export PATH="$VIRTUAL_ENV/Lib/site-packages/nvidia/cudnn/bin:$PATH"
+```
