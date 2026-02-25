@@ -42,8 +42,13 @@ class Qwen3AsrSTTProvider(STTProvider):
         )
 
     def transcribe(self, audio_path: Path) -> TranscriptionResult:
+        # Prefer PyAV decoding to avoid PySoundFile / audioread issues with m4a etc.
+        audio_input: Any = self._load_audio_with_av(audio_path)
+        if audio_input is None:
+            audio_input = str(audio_path)
+
         kwargs: dict[str, Any] = {
-            "audio": str(audio_path),
+            "audio": audio_input,
             "language": self._language,
         }
         if self._return_time_stamps:
@@ -52,27 +57,10 @@ class Qwen3AsrSTTProvider(STTProvider):
         try:
             results = self._model.transcribe(**kwargs)
         except Exception as first_error:
-            audio = self._load_audio_with_av(audio_path)
-            if audio is None:
-                raise RuntimeError(
-                    f"Qwen3-ASR 讀取音檔失敗 ({audio_path.name}): {type(first_error).__name__}: {first_error}"
-                ) from first_error
-
-            fallback_kwargs: dict[str, Any] = {
-                "audio": audio,
-                "language": self._language,
-            }
-            if self._return_time_stamps:
-                fallback_kwargs["return_time_stamps"] = True
-
-            try:
-                results = self._model.transcribe(**fallback_kwargs)
-            except Exception as second_error:
-                raise RuntimeError(
-                    "Qwen3-ASR 轉錄失敗（已嘗試路徑讀取與 PyAV fallback）: "
-                    f"{type(first_error).__name__}: {first_error}; "
-                    f"{type(second_error).__name__}: {second_error}"
-                ) from second_error
+            raise RuntimeError(
+                f"Qwen3-ASR 轉錄失敗 ({audio_path.name}): "
+                f"{type(first_error).__name__}: {first_error}"
+            ) from first_error
 
         if not results:
             return TranscriptionResult(language=None, language_probability=None, segments=[])

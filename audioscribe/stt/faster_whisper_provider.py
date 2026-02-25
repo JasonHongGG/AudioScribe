@@ -14,6 +14,7 @@ class FasterWhisperSTTProvider(STTProvider):
                 "找不到 faster-whisper，請先執行: pip install faster-whisper"
             ) from exc
 
+        self.vad_filter=config.vad_filter
         self._beam_size = config.beam_size
         self._model = WhisperModel(
             config.model_size,
@@ -22,7 +23,7 @@ class FasterWhisperSTTProvider(STTProvider):
         )
 
     def transcribe(self, audio_path: Path) -> TranscriptionResult:
-        segments, info = self._model.transcribe(str(audio_path), beam_size=self._beam_size)
+        segments, info = self._model.transcribe(str(audio_path), beam_size=self._beam_size, vad_filter=self.vad_filter)
         normalized_segments = [
             TranscriptSegment(start=segment.start, end=segment.end, text=segment.text)
             for segment in segments

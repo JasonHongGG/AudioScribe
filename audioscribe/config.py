@@ -8,15 +8,16 @@ class FasterWhisperConfig:
     device: str = "cuda"
     compute_type: str = "int8_float16"
     beam_size: int = 5
+    vad_filter: bool = False
 
 
 @dataclass(slots=True)
 class Qwen3AsrConfig:
-    model_name: str = "Qwen/Qwen3-ASR-0.6B"
-    forced_aligner: str | None = None
+    model_name: str = "Qwen/Qwen3-ASR-1.7B"
+    forced_aligner: str = "Qwen/Qwen3-ForcedAligner-0.6B"
     device_map: str = "cuda:0"
     dtype: str = "bfloat16"
     max_inference_batch_size: int = 8
-    max_new_tokens: int = 512
+    max_new_tokens: int = 4096
     language: str | None = None
-    return_time_stamps: bool = False
+    return_time_stamps: bool = True
