@@ -1,0 +1,22 @@
+from dataclasses import dataclass
+
+
+@dataclass(slots=True)
+class FasterWhisperConfig:
+    # small, medium, large-v1, large-v2, large-v3, large, distil-large-v2, distil-large-v3, distil-large-v3.5, large-v3-turbo, turbo
+    model_size: str = "large-v3"
+    device: str = "cuda"
+    compute_type: str = "int8_float16"
+    beam_size: int = 5
+
+
+@dataclass(slots=True)
+class Qwen3AsrConfig:
+    model_name: str = "Qwen/Qwen3-ASR-0.6B"
+    forced_aligner: str | None = None
+    device_map: str = "cuda:0"
+    dtype: str = "bfloat16"
+    max_inference_batch_size: int = 8
+    max_new_tokens: int = 512
+    language: str | None = None
+    return_time_stamps: bool = False

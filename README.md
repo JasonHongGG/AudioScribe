@@ -1,32 +1,56 @@
 # AudioScribe
 
+AudioScribe 是純 STT（Speech-to-Text）批次轉錄工具。
+
+## 架構（STT 模組化）
+
+- `audioscribe/interfaces/stt.py`：`STTProvider` 介面
+- `audioscribe/stt/`：STT provider 實作
+	- `faster_whisper_provider.py`
+	- `qwen3_asr_provider.py`
+- `audioscribe/factories/stt_factory.py`：`STTFactory`，負責建立可替換 STT provider
+- `audioscribe/batch_transcriber.py`：批次流程（只依賴 STT 介面）
+- `app.py`：CLI 入口
+
+## 環境與安裝（完全使用 uv）
+
+1. 安裝 `uv`
+
+```bash
+pip install uv
+```
+
+2. 建立並同步環境（預設含 `faster-whisper`）
+
+```bash
+uv sync
+```
+
+3. 若要使用 Qwen3-ASR，安裝 `qwen` extra
+
+```bash
+uv sync --extra qwen
+```
+
 ## 使用方式
 
-1. 將音檔放入 `audio/` 資料夾。
-2. 執行 `app.py`，程式會自動處理音檔並將結果輸出至 `output/` 資料夾。
+1. 將音檔放入 `audio/`
+2. 執行轉錄，輸出會到 `output/`
 
+### 預設（faster-whisper）
 
-## 額外須知 (疑難雜症)
-### cudnn_ops64_9.dll
-```
-pip install "nvidia-cudnn-cu12==9.1.0.70"
-
-export PATH="$VIRTUAL_ENV/Lib/site-packages/nvidia/cudnn/bin:$PATH"
+```bash
+uv run python app.py
 ```
 
-### cublas64_12.dll
+### 切換成 Qwen3-ASR
+
+```bash
+uv run --extra qwen python app.py --stt-provider qwen3-asr
 ```
-pip install "nvidia-cublas-cu12==12.3.4.1"
 
-export PATH="$VIRTUAL_ENV/Lib/site-packages/nvidia/cublas/bin:$PATH"
-```
+### 指定資料夾
 
-### 套件環境變數設定
-
-> 在 .venv/Scripts/activate 檔案中直接加入在 **最後**
-
-```
-export PATH="$VIRTUAL_ENV/Lib/site-packages/nvidia/cublas/bin:$PATH"
-
-export PATH="$VIRTUAL_ENV/Lib/site-packages/nvidia/cudnn/bin:$PATH"
+```bash
+uv run python app.py --audio-dir audio --output-dir output
 ```

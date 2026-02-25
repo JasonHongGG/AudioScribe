@@ -1,0 +1,26 @@
+[project]
+name = "audioscribe"
+version = "0.1.0"
+description = "Batch audio transcription with pluggable STT providers"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "faster-whisper>=1.1.0",
+]
+
+[project.optional-dependencies]
+qwen = [
+    "qwen-asr>=0.0.6",
+    "torch>=2.6,<3",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
