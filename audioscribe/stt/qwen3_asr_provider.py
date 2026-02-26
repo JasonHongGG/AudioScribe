@@ -63,19 +63,22 @@ class Qwen3AsrSTTProvider(STTProvider):
             ) from first_error
 
         if not results:
-            return TranscriptionResult(language=None, language_probability=None, segments=[])
+            return TranscriptionResult(language=None, language_probability=None, segments=[], has_timestamps=False)
 
         result = results[0]
         segments = self._extract_segments(result)
         text = self._pick_field(result, "text")
 
+        has_ts = any(s.end > s.start for s in segments)
         if not segments and text:
             segments = [TranscriptSegment(start=0.0, end=0.0, text=str(text))]
+            has_ts = False
 
         return TranscriptionResult(
             language=self._pick_field(result, "language"),
             language_probability=None,
             segments=segments,
+            has_timestamps=has_ts,
         )
 
     @staticmethod

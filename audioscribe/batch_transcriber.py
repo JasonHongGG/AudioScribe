@@ -43,10 +43,10 @@ class BatchTranscriber:
 
         output_file = self.output_dir / f"{audio_path.stem}.txt"
         print(f"    產出文字檔案到: {output_file}")
-        has_real_timestamps = any(segment.end > segment.start for segment in result.segments)
 
+        # Consume segments lazily (streaming) — print & write each segment as it arrives
         with output_file.open("w", encoding="utf-8") as target:
-            if has_real_timestamps:
+            if result.has_timestamps:
                 for segment in result.segments:
                     start_time = str(timedelta(seconds=segment.start))
                     end_time = str(timedelta(seconds=segment.end))
@@ -54,7 +54,13 @@ class BatchTranscriber:
                     print(f"    {line}")
                     target.write(line + "\n")
             else:
-                plain_text = " ".join(segment.text.strip() for segment in result.segments if segment.text.strip())
+                # No timestamps — collect all text and split into readable lines
+                all_texts: list[str] = []
+                for segment in result.segments:
+                    text = segment.text.strip()
+                    if text:
+                        all_texts.append(text)
+                plain_text = " ".join(all_texts)
                 lines = self._split_text_lines(plain_text)
                 for line in lines:
                     print(f"    {line}")

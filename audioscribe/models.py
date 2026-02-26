@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Iterable
 
 
 @dataclass(slots=True)
@@ -12,4 +13,5 @@ class TranscriptSegment:
 class TranscriptionResult:
     language: str | None
     language_probability: float | None
-    segments: list[TranscriptSegment]
+    segments: Iterable[TranscriptSegment]
+    has_timestamps: bool = True

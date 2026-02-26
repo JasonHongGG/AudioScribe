@@ -4,11 +4,12 @@ from dataclasses import dataclass
 @dataclass(slots=True)
 class FasterWhisperConfig:
     # small, medium, large-v1, large-v2, large-v3, large, distil-large-v2, distil-large-v3, distil-large-v3.5, large-v3-turbo, turbo
-    model_size: str = "large-v3"
+    model_size: str = "medium"
     device: str = "cuda"
     compute_type: str = "int8_float16"
     beam_size: int = 5
     vad_filter: bool = False
+    condition_on_previous_text: bool = False
 
 
 @dataclass(slots=True)
