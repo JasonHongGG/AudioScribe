@@ -5,7 +5,10 @@ description = "Batch audio transcription with pluggable STT providers"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.133.0",
     "faster-whisper>=1.1.0",
+    "python-multipart>=0.0.22",
+    "uvicorn>=0.41.0",
 ]
 
 [project.optional-dependencies]

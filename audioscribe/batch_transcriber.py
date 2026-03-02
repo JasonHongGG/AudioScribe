@@ -7,10 +7,10 @@ from typing import Iterable
 from audioscribe.interfaces.stt import STTProvider
 from audioscribe.utils.ffmpeg import extract_audio_chunk, get_audio_duration
 from audioscribe.utils.regions import parse_regions_config, resolve_regions
-
+from audioscribe.logger import global_logger
 
 class BatchTranscriber:
-    SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"}
+    SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".mp4", ".mkv"}
 
     def __init__(
         self,
@@ -38,7 +38,7 @@ class BatchTranscriber:
 
     def transcribe_file(self, audio_path: Path) -> None:
         output_file = self.output_dir / f"{audio_path.stem}.txt"
-        print(f"    產出文字檔案到: {output_file}")
+        global_logger.write(f"    產出文字檔案到: {output_file}")
 
         # Check for regions config
         regions_file = audio_path.with_name(audio_path.stem + ".regions.json")
@@ -48,13 +48,13 @@ class BatchTranscriber:
         is_chunked = False
 
         if regions_config is not None:
-            print(f"    找到區段設定檔: {regions_file.name}")
+            global_logger.write(f"    找到區段設定檔: {regions_file.name}")
             try:
                 duration = get_audio_duration(audio_path)
                 chunks_to_process = resolve_regions(regions_config, duration)
                 is_chunked = True
             except Exception as e:
-                print(f"    取得音檔長度失敗，忽略區段設定: {e}")
+                global_logger.write(f"    取得音檔長度失敗，忽略區段設定: {e}")
 
         # Open the target file once
         with output_file.open("w", encoding="utf-8") as target:
@@ -63,10 +63,10 @@ class BatchTranscriber:
                 self._process_and_write_chunk(audio_path, target, offset=0.0)
             else:
                 # Process each valid chunk
-                print(f"    將處理 {len(chunks_to_process)} 個有效區段...")
+                global_logger.write(f"    將處理 {len(chunks_to_process)} 個有效區段...")
                 for i, (start, end) in enumerate(chunks_to_process):
                     chunk_path = self.tmp_dir / f"chunk_{i}.flac"
-                    print(f"    > 擷取區段 [{i+1}/{len(chunks_to_process)}]: {start:.2f}s -> {end:.2f}s")
+                    global_logger.write(f"    > 擷取區段 [{i+1}/{len(chunks_to_process)}]: {start:.2f}s -> {end:.2f}s")
                     extract_audio_chunk(audio_path, chunk_path, start, end)
                     
                     try:
@@ -75,7 +75,7 @@ class BatchTranscriber:
                         if chunk_path.exists():
                             chunk_path.unlink()
 
-        print(f"    已產出文字檔案: {output_file}")
+        global_logger.write(f"    已產出文字檔案: {output_file}")
 
     def _process_and_write_chunk(self, audio_path: Path, target, offset: float) -> None:
         """Processes a single audio file/chunk and writes the result to the target file."""
@@ -83,11 +83,11 @@ class BatchTranscriber:
         
         if result.language:
             if result.language_probability is not None:
-                print(
+                global_logger.write(
                     f"    偵測到語言: {result.language}，信心指數: {result.language_probability:.2f}"
                 )
             else:
-                print(f"    偵測到語言: {result.language}")
+                global_logger.write(f"    偵測到語言: {result.language}")
 
         if result.has_timestamps:
             for segment in result.segments:
@@ -105,7 +105,7 @@ class BatchTranscriber:
                     end_time = str(timedelta(seconds=actual_end))
                     line = f"[{start_time} -> {end_time}] {segment.text}"
                     
-                print(f"    {line}")
+                global_logger.write(f"    {line}")
                 target.write(line + "\n")
         else:
             # No timestamps — collect all text and split into readable lines
@@ -117,7 +117,7 @@ class BatchTranscriber:
             plain_text = " ".join(all_texts)
             lines = self._split_text_lines(plain_text)
             for line in lines:
-                print(f"    {line}")
+                global_logger.write(f"    {line}")
                 target.write(line + "\n")
 
     @staticmethod
@@ -141,15 +141,15 @@ class BatchTranscriber:
     def transcribe_all(self) -> None:
         audio_files = list(self.iter_audio_files())
         if not audio_files:
-            print(f"在 {self.audio_dir} 找不到相容的音訊檔案")
+            global_logger.write(f"在 {self.audio_dir} 找不到相容的音訊檔案")
             return
 
         for index, audio_file in enumerate(audio_files, start=1):
             try:
-                print(f"[{index}/{len(audio_files)}] 開始轉錄: {audio_file.name}")
+                global_logger.write(f"[{index}/{len(audio_files)}] 開始轉錄: {audio_file.name}")
                 self.transcribe_file(audio_file)
             except Exception as exc:  # noqa: BLE001 - log and continue batch
-                print(
+                global_logger.write(
                     f"處理 {audio_file.name} 時發生錯誤: "
                     f"{type(exc).__name__}: {exc or '<empty message>'}"
                 )
