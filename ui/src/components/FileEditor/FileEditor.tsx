@@ -257,11 +257,13 @@ export function FileEditor({ taskId }: { taskId: string }) {
         }
     };
 
-    // 5. Custom Region Drag/Resize Handling State
-    const [draggingHandle, setDraggingHandle] = useState<{ id: string, edge: 'left' | 'right' } | null>(null);
+    // 5. Custom Boundary Drag Handling State
+    // boundaryIndex means the boundary between segments[boundaryIndex] and segments[boundaryIndex + 1]
+    const [draggingBoundaryIndex, setDraggingBoundaryIndex] = useState<number | null>(null);
+    const [dragTooltip, setDragTooltip] = useState<{ time: number; leftPx: number } | null>(null);
 
     const handleMouseMoveOverlay = useCallback((e: MouseEvent) => {
-        if (!draggingHandle || !wavesurferRef.current || !duration || !task?.segments) return;
+        if (draggingBoundaryIndex === null || !wavesurferRef.current || !duration || !task?.segments) return;
 
         const ws = wavesurferRef.current;
         const rect = containerRef.current!.getBoundingClientRect();
@@ -276,30 +278,30 @@ export function FileEditor({ taskId }: { taskId: string }) {
         let newTime = (xPos / totalWidth) * duration;
         newTime = Math.max(0, Math.min(newTime, duration));
 
-        // Simplified logic: just update the segment boundary directly 
-        // Real logic should prevent overlaps
         const newSegs = [...task.segments];
-        const segIndex = newSegs.findIndex(s => s.id === draggingHandle.id);
-        if (segIndex !== -1) {
-            const seg = newSegs[segIndex];
-            if (draggingHandle.edge === 'left') {
-                // Prevent dragging left edge past right edge
-                newSegs[segIndex] = { ...seg, start: Math.min(newTime, seg.end - 0.1) };
-            } else {
-                // Prevent dragging right edge past left edge
-                newSegs[segIndex] = { ...seg, end: Math.max(newTime, seg.start + 0.1) };
-            }
-            // Rapid updates for visual feedback, though might be heavy on Zustand depending on frequency
-            updateTask(taskId, { segments: newSegs });
-        }
-    }, [draggingHandle, duration, task?.segments, taskId, updateTask]);
+        const leftSeg = newSegs[draggingBoundaryIndex];
+        const rightSeg = newSegs[draggingBoundaryIndex + 1];
+        if (!leftSeg || !rightSeg) return;
+
+        const minSegmentDuration = 0.1;
+        const minBoundary = leftSeg.start + minSegmentDuration;
+        const maxBoundary = rightSeg.end - minSegmentDuration;
+        const clampedTime = Math.max(minBoundary, Math.min(newTime, maxBoundary));
+        const tooltipLeftPx = (clampedTime / duration) * totalWidth;
+
+        newSegs[draggingBoundaryIndex] = { ...leftSeg, end: clampedTime };
+        newSegs[draggingBoundaryIndex + 1] = { ...rightSeg, start: clampedTime };
+        setDragTooltip({ time: clampedTime, leftPx: tooltipLeftPx });
+        updateTask(taskId, { segments: newSegs });
+    }, [draggingBoundaryIndex, duration, task?.segments, taskId, updateTask]);
 
     const handleMouseUpOverlay = useCallback(() => {
-        setDraggingHandle(null);
+        setDraggingBoundaryIndex(null);
+        setDragTooltip(null);
     }, []);
 
     useEffect(() => {
-        if (draggingHandle) {
+        if (draggingBoundaryIndex !== null) {
             window.addEventListener('mousemove', handleMouseMoveOverlay);
             window.addEventListener('mouseup', handleMouseUpOverlay);
         } else {
@@ -310,7 +312,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
             window.removeEventListener('mousemove', handleMouseMoveOverlay);
             window.removeEventListener('mouseup', handleMouseUpOverlay);
         };
-    }, [draggingHandle, handleMouseMoveOverlay, handleMouseUpOverlay]);
+    }, [draggingBoundaryIndex, handleMouseMoveOverlay, handleMouseUpOverlay]);
 
     // Helpers formats
     // 6. Global Keyboard Shortcuts
@@ -353,10 +355,17 @@ export function FileEditor({ taskId }: { taskId: string }) {
     }, []);
 
     const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
+        const totalSeconds = Math.floor(seconds);
+        const hours = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
         const ms = Math.floor((seconds % 1) * 100);
-        return `${mins}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+
+        if (hours > 0) {
+            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+        }
+
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
     };
 
     if (!task) return null;
@@ -409,7 +418,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
                         {/* Custom React Overlay for Regions */}
                         {task?.segments && duration > 0 && wavesurferRef.current && wavesurferRef.current.getWrapper() && (
                             <div
-                                className="absolute inset-0 pointer-events-none"
+                                className="absolute inset-0 z-30 pointer-events-none"
                                 style={{ transform: `translateX(${-scrollOffset}px)` }}
                             >
                                 {task.segments.map((seg, i) => {
@@ -439,8 +448,15 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                 )}
                                                 onMouseDown={(e) => {
                                                     e.stopPropagation();
-                                                    setDraggingHandle({ id: seg.id, edge: 'left' });
+                                                    e.preventDefault();
+                                                    if (!isFirst) {
+                                                        const boundaryTime = task.segments![i - 1].end;
+                                                        const tooltipLeftPx = (boundaryTime / duration) * totalWidth;
+                                                        setDraggingBoundaryIndex(i - 1);
+                                                        setDragTooltip({ time: boundaryTime, leftPx: tooltipLeftPx });
+                                                    }
                                                 }}
+                                                onClick={(e) => e.stopPropagation()}
                                             />
 
                                             {/* Right Boundary Handle */}
@@ -452,12 +468,33 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                 )}
                                                 onMouseDown={(e) => {
                                                     e.stopPropagation();
-                                                    setDraggingHandle({ id: seg.id, edge: 'right' });
+                                                    e.preventDefault();
+                                                    if (!isLast) {
+                                                        const boundaryTime = seg.end;
+                                                        const tooltipLeftPx = (boundaryTime / duration) * totalWidth;
+                                                        setDraggingBoundaryIndex(i);
+                                                        setDragTooltip({ time: boundaryTime, leftPx: tooltipLeftPx });
+                                                    }
                                                 }}
+                                                onClick={(e) => e.stopPropagation()}
                                             />
                                         </div>
                                     )
                                 })}
+
+                                {dragTooltip && draggingBoundaryIndex !== null && (
+                                    <div
+                                        className="absolute top-2 z-40 pointer-events-none"
+                                        style={{
+                                            left: `${dragTooltip.leftPx}px`,
+                                            transform: 'translateX(-50%)',
+                                        }}
+                                    >
+                                        <div className="rounded-md border border-white/10 bg-background-dark/95 px-2 py-1 text-xs font-mono text-primary shadow-lg backdrop-blur-sm">
+                                            {formatTime(dragTooltip.time)}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
