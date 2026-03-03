@@ -1,41 +1,55 @@
-import React from 'react';
-import { Activity, X, Minus, Square } from 'lucide-react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { ReactNode } from 'react';
+import { Minus, Square, X } from 'lucide-react';
+import { Window } from '@tauri-apps/api/window';
 
-export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const appWindow = getCurrentWindow();
+const appWindow = new Window('main');
 
+interface MainLayoutProps {
+    children: ReactNode;
+}
+
+export function MainLayout({ children }: MainLayoutProps) {
     return (
-        <div className="flex flex-col w-screen h-screen overflow-hidden bg-background text-foreground">
-
-            {/* Frameless Window Titlebar */}
+        <div className="flex flex-col w-screen h-screen overflow-hidden bg-background">
+            {/* Titlebar / Drag Region */}
             <div
                 data-tauri-drag-region
-                className="h-10 flex items-center justify-between px-4 bg-panel/40 backdrop-blur-md border-b border-white/5 select-none tauri-drag-region shrink-0"
+                className="flex items-center justify-between h-10 px-4 select-none glass-panel border-b border-white/5"
             >
-                <div data-tauri-drag-region className="flex items-center gap-3 pl-2 pointer-events-none tauri-drag-region">
-                    <Activity className="w-4 h-4 text-primary" />
-                    <span className="text-white/50 text-[11px] font-bold tracking-widest uppercase">
-                        AudioScribe Studio
-                    </span>
+                <div className="flex items-center gap-2 pointer-events-none text-primary font-semibold tracking-wide text-xs">
+                    AudioScribe
                 </div>
-                <div className="flex items-center gap-1.5">
-                    <button onClick={() => appWindow.minimize()} className="p-1.5 rounded-md hover:bg-white/10 text-white/40 hover:text-white transition-colors">
-                        <Minus className="w-3.5 h-3.5" />
+
+                {/* Window Controls */}
+                <div className="flex text-foreground-muted">
+                    <button
+                        onClick={() => appWindow.minimize()}
+                        className="flex items-center justify-center w-10 h-10 hover:bg-surface transition-colors cursor-pointer"
+                        title="Minimize"
+                    >
+                        <Minus size={16} />
                     </button>
-                    <button onClick={() => appWindow.toggleMaximize()} className="p-1.5 rounded-md hover:bg-white/10 text-white/40 hover:text-white transition-colors">
-                        <Square className="w-3 h-3" />
+                    <button
+                        onClick={() => appWindow.toggleMaximize()}
+                        className="flex items-center justify-center w-10 h-10 hover:bg-surface transition-colors cursor-pointer"
+                        title="Maximize"
+                    >
+                        <Square size={13} />
                     </button>
-                    <button onClick={() => appWindow.close()} className="p-1.5 rounded-md hover:bg-danger/80 hover:text-white text-white/40 transition-colors">
-                        <X className="w-3.5 h-3.5" />
+                    <button
+                        onClick={() => appWindow.close()}
+                        className="flex items-center justify-center w-10 h-10 hover:bg-danger hover:text-white transition-colors cursor-pointer"
+                        title="Close"
+                    >
+                        <X size={16} />
                     </button>
                 </div>
             </div>
 
-            {/* App Content */}
-            <main className="flex-1 flex overflow-hidden relative">
+            {/* Main Content Area */}
+            <div className="flex-1 relative overflow-hidden flex flex-row">
                 {children}
-            </main>
+            </div>
         </div>
     );
-};
+}
