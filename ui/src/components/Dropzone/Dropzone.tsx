@@ -9,22 +9,25 @@ export function Dropzone() {
     const addTask = useStore((state) => state.addTask);
 
     useEffect(() => {
-        let unlistenEnter: UnlistenFn;
-        let unlistenLeave: UnlistenFn;
-        let unlistenDrop: UnlistenFn;
+        let isMounted = true;
+        let unlistenEnter: UnlistenFn | undefined;
+        let unlistenLeave: UnlistenFn | undefined;
+        let unlistenDrop: UnlistenFn | undefined;
 
         const setupListeners = async () => {
             try {
-                unlistenEnter = await listen('tauri://drag-enter', () => {
+                const ue = await listen('tauri://drag-enter', () => {
                     setIsDragging(true);
                 });
+                if (isMounted) unlistenEnter = ue; else ue();
 
-                unlistenLeave = await listen('tauri://drag-leave', () => {
+                const ul = await listen('tauri://drag-leave', () => {
                     setIsDragging(false);
                 });
+                if (isMounted) unlistenLeave = ul; else ul();
 
                 // The drop event payload type depends on Tauri v2 (tauri://drag-drop)
-                unlistenDrop = await listen<{ paths: string[] }>('tauri://drag-drop', (event) => {
+                const ud = await listen<{ paths: string[] }>('tauri://drag-drop', (event) => {
                     setIsDragging(false);
 
                     if (event.payload && event.payload.paths && Array.isArray(event.payload.paths)) {
@@ -52,6 +55,8 @@ export function Dropzone() {
                         });
                     }
                 });
+                if (isMounted) unlistenDrop = ud; else ud();
+
             } catch (error) {
                 console.error("Failed to setup drag-drop listeners:", error);
             }
@@ -60,6 +65,7 @@ export function Dropzone() {
         setupListeners();
 
         return () => {
+            isMounted = false;
             if (unlistenEnter) unlistenEnter();
             if (unlistenLeave) unlistenLeave();
             if (unlistenDrop) unlistenDrop();
