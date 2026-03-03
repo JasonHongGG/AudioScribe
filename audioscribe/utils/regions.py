@@ -6,7 +6,7 @@ from pathlib import Path
 
 @dataclass
 class RegionConfig:
-    includes: list[tuple[float, float]]
+    trim: tuple[float, float] | None
     excludes: list[tuple[float, float]]
 
 
@@ -70,29 +70,41 @@ def parse_regions_config(config_path: Path) -> RegionConfig | None:
         with config_path.open("r", encoding="utf-8") as f:
             data = json.load(f)
             
-        includes = [tuple(r) for r in data.get("include", []) if len(r) == 2]
+        trim_data = data.get("trim")
+        trim: tuple[float, float] | None = None
+        if isinstance(trim_data, list) and len(trim_data) == 2:
+            trim = (float(trim_data[0]), float(trim_data[1]))
         excludes = [tuple(r) for r in data.get("exclude", []) if len(r) == 2]
-        return RegionConfig(includes=includes, excludes=excludes)
+        return RegionConfig(trim=trim, excludes=excludes)
     except Exception as exc:
         logging.warning(f"Failed to parse regions config {config_path}: {exc}")
         return None
 
 
+def resolve_trim_range(config: RegionConfig, max_duration: float) -> tuple[float, float]:
+    """Resolve trim range and cap it to max_duration."""
+    if config.trim is None:
+        return (0.0, max_duration)
+
+    start, end = config.trim
+    start = max(0.0, min(start, max_duration))
+    end = max(0.0, min(end, max_duration))
+    if start >= end:
+        return (0.0, max_duration)
+    return (start, end)
+
+
 def resolve_regions(config: RegionConfig, max_duration: float) -> list[tuple[float, float]]:
-    """Resolve includes minus excludes up to max_duration."""
-    includes = config.includes
-    if not includes:
-        includes = [(0.0, max_duration)]
-        
-    # Cap includes to max_duration
-    capped_includes = []
-    for start, end in includes:
-        start = max(0.0, min(start, max_duration))
-        end = max(0.0, min(end, max_duration))
+    """Resolve trim range minus excluded ranges up to max_duration."""
+    trim_start, trim_end = resolve_trim_range(config, max_duration)
+    base_regions = [(trim_start, trim_end)]
+
+    capped_excludes = []
+    for start, end in config.excludes:
+        start = max(trim_start, min(start, trim_end))
+        end = max(trim_start, min(end, trim_end))
         if start < end:
-            capped_includes.append((start, end))
-            
-    merged_includes = _merge_intervals(capped_includes)
-    
-    final_regions = _subtract_intervals(merged_includes, config.excludes)
+            capped_excludes.append((start, end))
+
+    final_regions = _subtract_intervals(base_regions, capped_excludes)
     return [r for r in final_regions if r[0] < r[1]]

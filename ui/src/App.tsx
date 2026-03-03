@@ -1,4 +1,3 @@
-import React from 'react';
 import { MainLayout } from './Layout/MainLayout';
 import { FileList } from './components/FileList/FileList';
 import { Dropzone } from './components/Dropzone/Dropzone';
@@ -40,6 +39,7 @@ function App() {
           provider: 'faster-whisper',
           modelSize: 'base',
           segments: null,
+          trimRange: null,
         };
         addTask(newTask);
       });

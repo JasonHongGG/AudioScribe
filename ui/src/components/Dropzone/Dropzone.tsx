@@ -49,6 +49,7 @@ export function Dropzone() {
                                     provider: 'faster-whisper',
                                     modelSize: 'base',
                                     segments: null,
+                                    trimRange: null,
                                 };
                                 addTask(newTask);
                             }

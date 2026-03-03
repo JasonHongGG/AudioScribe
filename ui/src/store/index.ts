@@ -7,6 +7,11 @@ export type AudioSegment = {
     included: boolean;
 };
 
+export type TrimRange = {
+    start: number;
+    end: number;
+};
+
 export type FileTask = {
     id: string;
     file: File | null;
@@ -17,6 +22,7 @@ export type FileTask = {
     provider: 'faster-whisper' | 'qwen3-asr';
     modelSize: string;
     segments: AudioSegment[] | null;
+    trimRange: TrimRange | null;
 };
 
 export type ActiveTool = 'split' | 'include' | 'exclude';

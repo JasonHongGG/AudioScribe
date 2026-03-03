@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
-import { useStore, AudioSegment } from '../../store';
+import { useStore, AudioSegment, TrimRange } from '../../store';
 import { Scissors, CheckSquare, XSquare, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { clsx } from 'clsx';
@@ -36,6 +36,19 @@ export function FileEditor({ taskId }: { taskId: string }) {
     const [duration, setDuration] = useState(0);
     const [zoom, setZoom] = useState(50); // initial zoom pixels per second
     const [scrollOffset, setScrollOffset] = useState(0); // For syncing custom overlays
+
+    const getTimelineMetrics = useCallback(() => {
+        const ws = wavesurferRef.current;
+        const viewportWidth = ws?.getWidth() ?? containerRef.current?.clientWidth ?? 0;
+        const scrollLeft = ws?.getScroll() ?? 0;
+        const totalWidth = duration > 0 ? Math.max(viewportWidth, duration * zoom) : viewportWidth;
+
+        return {
+            viewportWidth,
+            scrollLeft,
+            totalWidth,
+        };
+    }, [duration, zoom]);
 
     // 1. Initialize WaveSurfer
     useEffect(() => {
@@ -96,30 +109,36 @@ export function FileEditor({ taskId }: { taskId: string }) {
         loadAudio();
 
         // Event Listeners
+
         ws.on('ready', () => {
             const audioDuration = ws.getDuration();
             setDuration(audioDuration);
+            const defaultTrim: TrimRange = {
+                start: 0,
+                end: audioDuration,
+            };
+            const currentTrim = task.trimRange ?? defaultTrim;
+            const trimRange: TrimRange = {
+                start: Math.max(0, Math.min(currentTrim.start, audioDuration)),
+                end: Math.max(0, Math.min(currentTrim.end, audioDuration)),
+            };
 
-            // Listen to scroll events to sync our custom overlay later
-            const scrollWrapper = ws.getWrapper();
-            if (scrollWrapper) {
-                // Initialize offset
-                setScrollOffset(scrollWrapper.scrollLeft);
-
-                scrollWrapper.addEventListener('scroll', () => {
-                    setScrollOffset(scrollWrapper.scrollLeft);
-                });
-            }
+            setScrollOffset(ws.getScroll());
 
             // Initialize default single segment if empty
             if (!task.segments || task.segments.length === 0) {
                 const initialSegment: AudioSegment = {
                     id: Math.random().toString(36).substring(7),
-                    start: 0,
-                    end: audioDuration,
+                    start: trimRange.start,
+                    end: trimRange.end,
                     included: true
                 };
-                updateTask(task.id, { segments: [initialSegment] });
+                updateTask(task.id, {
+                    trimRange,
+                    segments: [initialSegment],
+                });
+            } else if (!task.trimRange) {
+                updateTask(task.id, { trimRange });
             }
         });
 
@@ -127,17 +146,19 @@ export function FileEditor({ taskId }: { taskId: string }) {
         ws.on('seeking', () => setCurrentTime(ws.getCurrentTime()));
         ws.on('play', () => setIsPlaying(true));
         ws.on('pause', () => setIsPlaying(false));
+        ws.on('scroll', (_visibleStart, _visibleEnd, scrollLeft) => {
+            setScrollOffset(scrollLeft);
+        });
         // Update scroll position when zooming
         ws.on('zoom', () => {
-            const wrapper = ws.getWrapper();
-            if (wrapper) setScrollOffset(wrapper.scrollLeft);
+            setScrollOffset(ws.getScroll());
         });
 
         return () => {
             ws.destroy();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [task?.id]); // Re-init on file switch
+    }, [task?.id, zoom]); // Re-init on file switch
 
     // 3. Zoom Handling (Wheel on waveform and timeline)
     const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -155,10 +176,10 @@ export function FileEditor({ taskId }: { taskId: string }) {
             // Only pan horizontally if inside main area
             if (Math.abs(e.deltaX) > 0) {
                 e.preventDefault();
-                const scrollWrapper = containerRef.current?.shadowRoot?.querySelector('div[style*="overflow-x: auto"]') || containerRef.current?.querySelector('div');
-                if (scrollWrapper) {
-                    scrollWrapper.scrollLeft += e.deltaX;
-                }
+                const ws = wavesurferRef.current;
+                const nextScroll = ws.getScroll() + e.deltaX;
+                ws.setScroll(nextScroll);
+                setScrollOffset(ws.getScroll());
             }
         }
     };
@@ -167,18 +188,14 @@ export function FileEditor({ taskId }: { taskId: string }) {
     const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!wavesurferRef.current || !task?.segments || !duration) return;
 
-        const ws = wavesurferRef.current;
         const rect = containerRef.current!.getBoundingClientRect();
-        // Accommodate for scroll Left position
-        // Removed scrollWrapper since it's unused
-        let scrollOffset = 0;
-        if (ws.getWrapper()) {
-            scrollOffset = ws.getWrapper().scrollLeft;
-        }
+        const { scrollLeft, totalWidth } = getTimelineMetrics();
+        if (totalWidth <= 0) return;
 
-        const xPos = e.clientX - rect.left + scrollOffset;
-        const totalWidth = ws.getWrapper().scrollWidth;
+        const xPos = e.clientX - rect.left + scrollLeft;
         const clickTime = (xPos / totalWidth) * duration;
+        const activeTrim = task.trimRange ?? { start: 0, end: duration };
+        if (clickTime < activeTrim.start || clickTime > activeTrim.end) return;
 
         // Find clicked segment
         const clickedSegIndex = task.segments.findIndex(s => clickTime >= s.start && clickTime <= s.end);
@@ -213,13 +230,13 @@ export function FileEditor({ taskId }: { taskId: string }) {
         if (!wavesurferRef.current || !task?.segments || task.segments.length <= 1) return;
 
         // Right click deletion of segment boundaries
-        const ws = wavesurferRef.current;
         const rect = containerRef.current!.getBoundingClientRect();
-        // const scrollWrapper = ws.getWrapper().scrollLeft; // Used directly below
-        const scrollOffset = ws.getWrapper().scrollLeft;
-        const xPos = e.clientX - rect.left + scrollOffset;
-        const totalWidth = ws.getWrapper().scrollWidth;
+        const { scrollLeft, totalWidth } = getTimelineMetrics();
+        if (totalWidth <= 0) return;
+        const xPos = e.clientX - rect.left + scrollLeft;
         const clickTime = (xPos / totalWidth) * duration;
+        const activeTrim = task.trimRange ?? { start: 0, end: duration };
+        if (clickTime < activeTrim.start || clickTime > activeTrim.end) return;
 
         // Find closest boundary (excluding outer 0 and duration edges)
         // 15px threshold translated to time
@@ -258,50 +275,76 @@ export function FileEditor({ taskId }: { taskId: string }) {
     };
 
     // 5. Custom Boundary Drag Handling State
-    // boundaryIndex means the boundary between segments[boundaryIndex] and segments[boundaryIndex + 1]
-    const [draggingBoundaryIndex, setDraggingBoundaryIndex] = useState<number | null>(null);
+    const [draggingBoundary, setDraggingBoundary] = useState<
+        | { kind: 'segment'; index: number }
+        | { kind: 'trim-start' }
+        | { kind: 'trim-end' }
+        | null
+    >(null);
     const [dragTooltip, setDragTooltip] = useState<{ time: number; leftPx: number } | null>(null);
 
     const handleMouseMoveOverlay = useCallback((e: MouseEvent) => {
-        if (draggingBoundaryIndex === null || !wavesurferRef.current || !duration || !task?.segments) return;
+        if (!draggingBoundary || !wavesurferRef.current || !duration || !task?.segments) return;
 
-        const ws = wavesurferRef.current;
         const rect = containerRef.current!.getBoundingClientRect();
-        const scrollWrapper = ws.getWrapper();
-        if (!scrollWrapper) return;
-
-        const scrollOffset = scrollWrapper.scrollLeft;
-        const xPos = e.clientX - rect.left + scrollOffset;
-        const totalWidth = scrollWrapper.scrollWidth;
+        const { scrollLeft, totalWidth } = getTimelineMetrics();
+        if (totalWidth <= 0) return;
+        const xPos = e.clientX - rect.left + scrollLeft;
 
         // Clamp time between 0 and duration
         let newTime = (xPos / totalWidth) * duration;
         newTime = Math.max(0, Math.min(newTime, duration));
 
-        const newSegs = [...task.segments];
-        const leftSeg = newSegs[draggingBoundaryIndex];
-        const rightSeg = newSegs[draggingBoundaryIndex + 1];
-        if (!leftSeg || !rightSeg) return;
+        if (draggingBoundary.kind === 'segment') {
+            const newSegs = [...task.segments];
+            const leftSeg = newSegs[draggingBoundary.index];
+            const rightSeg = newSegs[draggingBoundary.index + 1];
+            if (!leftSeg || !rightSeg) return;
 
-        const minSegmentDuration = 0.1;
-        const minBoundary = leftSeg.start + minSegmentDuration;
-        const maxBoundary = rightSeg.end - minSegmentDuration;
-        const clampedTime = Math.max(minBoundary, Math.min(newTime, maxBoundary));
-        const tooltipLeftPx = (clampedTime / duration) * totalWidth;
+            const minSegmentDuration = 0.1;
+            const minBoundary = leftSeg.start + minSegmentDuration;
+            const maxBoundary = rightSeg.end - minSegmentDuration;
+            const clampedTime = Math.max(minBoundary, Math.min(newTime, maxBoundary));
+            const tooltipLeftPx = (clampedTime / duration) * totalWidth;
 
-        newSegs[draggingBoundaryIndex] = { ...leftSeg, end: clampedTime };
-        newSegs[draggingBoundaryIndex + 1] = { ...rightSeg, start: clampedTime };
-        setDragTooltip({ time: clampedTime, leftPx: tooltipLeftPx });
-        updateTask(taskId, { segments: newSegs });
-    }, [draggingBoundaryIndex, duration, task?.segments, taskId, updateTask]);
+            newSegs[draggingBoundary.index] = { ...leftSeg, end: clampedTime };
+            newSegs[draggingBoundary.index + 1] = { ...rightSeg, start: clampedTime };
+            setDragTooltip({ time: clampedTime, leftPx: tooltipLeftPx });
+            updateTask(taskId, { segments: newSegs });
+            return;
+        }
+
+        const existingTrim = task.trimRange ?? { start: 0, end: duration };
+        const minTrimDuration = 0.1;
+        let trimStart = existingTrim.start;
+        let trimEnd = existingTrim.end;
+
+        if (draggingBoundary.kind === 'trim-start') {
+            trimStart = Math.max(0, Math.min(newTime, trimEnd - minTrimDuration));
+        } else {
+            trimEnd = Math.min(duration, Math.max(newTime, trimStart + minTrimDuration));
+        }
+
+        trimStart = Math.round(trimStart * 100) / 100;
+        trimEnd = Math.round(trimEnd * 100) / 100;
+
+        const nextTrim = { start: trimStart, end: trimEnd };
+        const tooltipTime = draggingBoundary.kind === 'trim-start' ? trimStart : trimEnd;
+        const tooltipLeftPx = (tooltipTime / duration) * totalWidth;
+
+        setDragTooltip({ time: tooltipTime, leftPx: tooltipLeftPx });
+        updateTask(taskId, {
+            trimRange: nextTrim,
+        });
+    }, [draggingBoundary, duration, getTimelineMetrics, task?.segments, task?.trimRange, taskId, updateTask]);
 
     const handleMouseUpOverlay = useCallback(() => {
-        setDraggingBoundaryIndex(null);
+        setDraggingBoundary(null);
         setDragTooltip(null);
     }, []);
 
     useEffect(() => {
-        if (draggingBoundaryIndex !== null) {
+        if (draggingBoundary !== null) {
             window.addEventListener('mousemove', handleMouseMoveOverlay);
             window.addEventListener('mouseup', handleMouseUpOverlay);
         } else {
@@ -312,7 +355,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
             window.removeEventListener('mousemove', handleMouseMoveOverlay);
             window.removeEventListener('mouseup', handleMouseUpOverlay);
         };
-    }, [draggingBoundaryIndex, handleMouseMoveOverlay, handleMouseUpOverlay]);
+    }, [draggingBoundary, handleMouseMoveOverlay, handleMouseUpOverlay]);
 
     // Helpers formats
     // 6. Global Keyboard Shortcuts
@@ -419,15 +462,61 @@ export function FileEditor({ taskId }: { taskId: string }) {
                         {task?.segments && duration > 0 && wavesurferRef.current && wavesurferRef.current.getWrapper() && (
                             <div
                                 className="absolute inset-0 z-30 pointer-events-none"
-                                style={{ transform: `translateX(${-scrollOffset}px)` }}
                             >
-                                {task.segments.map((seg, i) => {
-                                    const totalWidth = wavesurferRef.current!.getWrapper().scrollWidth;
-                                    const leftPx = (seg.start / duration) * totalWidth;
-                                    const widthPx = ((seg.end - seg.start) / duration) * totalWidth;
+                                {(() => {
+                                    const { totalWidth, viewportWidth } = getTimelineMetrics();
+                                    const activeTrim = task.trimRange ?? { start: 0, end: duration };
+                                    const trimStartRawPx = (activeTrim.start / duration) * totalWidth;
+                                    const trimEndRawPx = (activeTrim.end / duration) * totalWidth;
+                                    const trimStartPx = trimStartRawPx - scrollOffset;
+                                    const trimEndPx = trimEndRawPx - scrollOffset;
+                                    const visibleSegments = task.segments
+                                        .map((seg, originalIndex) => ({ seg, originalIndex }))
+                                        .filter(({ seg }) => seg.end > activeTrim.start && seg.start < activeTrim.end);
+
+                                    return (
+                                        <>
+                                            <div
+                                                className="absolute top-0 bottom-0 pointer-events-none bg-background-dark/70"
+                                                style={{ left: 0, width: `${Math.max(0, trimStartPx)}px` }}
+                                            />
+                                            <div
+                                                className="absolute top-0 bottom-0 pointer-events-none bg-background-dark/70"
+                                                style={{ left: `${trimEndPx}px`, width: `${Math.max(0, viewportWidth - trimEndPx)}px` }}
+                                            />
+
+                                            <div
+                                                className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto w-[12px] bg-primary rounded-[2px] shadow-[0_0_15px_rgba(250,204,21,0.35)] hover:w-[14px]"
+                                                style={{ left: `${trimStartPx}px`, transform: 'translateX(-50%)' }}
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    e.preventDefault();
+                                                    setDraggingBoundary({ kind: 'trim-start' });
+                                                    setDragTooltip({ time: activeTrim.start, leftPx: trimStartRawPx });
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+
+                                            <div
+                                                className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto w-[12px] bg-primary rounded-[2px] shadow-[0_0_15px_rgba(250,204,21,0.35)] hover:w-[14px]"
+                                                style={{ left: `${trimEndPx}px`, transform: 'translateX(-50%)' }}
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    e.preventDefault();
+                                                    setDraggingBoundary({ kind: 'trim-end' });
+                                                    setDragTooltip({ time: activeTrim.end, leftPx: trimEndRawPx });
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+
+                                                {visibleSegments.map(({ seg, originalIndex }, i) => {
+                                            const renderStart = Math.max(seg.start, activeTrim.start);
+                                            const renderEnd = Math.min(seg.end, activeTrim.end);
+                                                const leftPx = (renderStart / duration) * totalWidth - scrollOffset;
+                                            const widthPx = ((renderEnd - renderStart) / duration) * totalWidth;
 
                                     const isFirst = i === 0;
-                                    const isLast = i === task.segments!.length - 1;
+                                            const isLast = i === visibleSegments.length - 1;
 
                                     return (
                                         <div
@@ -440,53 +529,48 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                             }}
                                         >
                                             {/* Left Boundary Handle */}
-                                            <div
-                                                className={cn(
-                                                    "absolute top-0 bottom-0 z-20 cursor-col-resize select-none",
-                                                    isFirst ? "left-0 w-[12px] bg-primary rounded-l-md shadow-[0_0_15px_rgba(250,204,21,0.4)] hover:bg-white hover:w-[16px]"
-                                                        : "-left-[2px] w-[4px] bg-white rounded-[2px] shadow-[0_0_5px_rgba(0,0,0,0.8),inset_0_0_1px_rgba(0,0,0,0.5)] hover:w-[8px] hover:-left-[4px]"
-                                                )}
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    e.preventDefault();
-                                                    if (!isFirst) {
-                                                        const boundaryTime = task.segments![i - 1].end;
+                                            {!isFirst && (
+                                                <div
+                                                    className="absolute top-0 bottom-0 -left-[6px] w-[12px] z-20 cursor-col-resize select-none bg-white/90 rounded-[2px] shadow-[0_0_5px_rgba(0,0,0,0.8),inset_0_0_1px_rgba(0,0,0,0.5)] hover:w-[14px] hover:-left-[7px]"
+                                                    onMouseDown={(e) => {
+                                                        e.stopPropagation();
+                                                        e.preventDefault();
+                                                        const boundaryTime = visibleSegments[i - 1].seg.end;
                                                         const tooltipLeftPx = (boundaryTime / duration) * totalWidth;
-                                                        setDraggingBoundaryIndex(i - 1);
+                                                        setDraggingBoundary({ kind: 'segment', index: visibleSegments[i - 1].originalIndex });
                                                         setDragTooltip({ time: boundaryTime, leftPx: tooltipLeftPx });
-                                                    }
-                                                }}
-                                                onClick={(e) => e.stopPropagation()}
-                                            />
+                                                    }}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                />
+                                            )}
 
                                             {/* Right Boundary Handle */}
-                                            <div
-                                                className={cn(
-                                                    "absolute top-0 bottom-0 z-20 cursor-col-resize select-none",
-                                                    isLast ? "right-0 w-[12px] bg-primary rounded-r-md shadow-[0_0_15px_rgba(250,204,21,0.4)] hover:bg-white hover:w-[16px]"
-                                                        : "-right-[2px] w-[4px] bg-white rounded-[2px] shadow-[0_0_5px_rgba(0,0,0,0.8),inset_0_0_1px_rgba(0,0,0,0.5)] hover:w-[8px] hover:-right-[4px]"
-                                                )}
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    e.preventDefault();
-                                                    if (!isLast) {
+                                            {!isLast && (
+                                                <div
+                                                    className="absolute top-0 bottom-0 -right-[6px] w-[12px] z-20 cursor-col-resize select-none bg-white/90 rounded-[2px] shadow-[0_0_5px_rgba(0,0,0,0.8),inset_0_0_1px_rgba(0,0,0,0.5)] hover:w-[14px] hover:-right-[7px]"
+                                                    onMouseDown={(e) => {
+                                                        e.stopPropagation();
+                                                        e.preventDefault();
                                                         const boundaryTime = seg.end;
                                                         const tooltipLeftPx = (boundaryTime / duration) * totalWidth;
-                                                        setDraggingBoundaryIndex(i);
+                                                        setDraggingBoundary({ kind: 'segment', index: originalIndex });
                                                         setDragTooltip({ time: boundaryTime, leftPx: tooltipLeftPx });
-                                                    }
-                                                }}
-                                                onClick={(e) => e.stopPropagation()}
-                                            />
+                                                    }}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                />
+                                            )}
                                         </div>
                                     )
-                                })}
+                                            })}
+                                        </>
+                                    );
+                                })()}
 
-                                {dragTooltip && draggingBoundaryIndex !== null && (
+                                {dragTooltip && draggingBoundary !== null && (
                                     <div
                                         className="absolute top-2 z-40 pointer-events-none"
                                         style={{
-                                            left: `${dragTooltip.leftPx}px`,
+                                            left: `${dragTooltip.leftPx - scrollOffset}px`,
                                             transform: 'translateX(-50%)',
                                         }}
                                     >

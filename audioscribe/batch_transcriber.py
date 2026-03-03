@@ -6,7 +6,7 @@ from typing import Iterable
 
 from audioscribe.interfaces.stt import STTProvider
 from audioscribe.utils.ffmpeg import extract_audio_chunk, get_audio_duration
-from audioscribe.utils.regions import parse_regions_config, resolve_regions
+from audioscribe.utils.regions import RegionConfig, parse_regions_config, resolve_regions, resolve_trim_range
 from audioscribe.logger import global_logger
 
 class BatchTranscriber:
@@ -46,34 +46,63 @@ class BatchTranscriber:
 
         chunks_to_process: list[tuple[float, float]] = []
         is_chunked = False
+        processing_audio = audio_path
+        base_time_offset = 0.0
+        trim_tmp_path: Path | None = None
 
         if regions_config is not None:
             global_logger.write(f"    找到區段設定檔: {regions_file.name}")
             try:
                 duration = get_audio_duration(audio_path)
-                chunks_to_process = resolve_regions(regions_config, duration)
+                trim_start, trim_end = resolve_trim_range(regions_config, duration)
+
+                if trim_start > 0.0 or trim_end < duration:
+                    trim_tmp_path = self.tmp_dir / f"{audio_path.stem}.trim.flac"
+                    global_logger.write(
+                        f"    先執行裁切範圍: {trim_start:.2f}s -> {trim_end:.2f}s"
+                    )
+                    extract_audio_chunk(audio_path, trim_tmp_path, trim_start, trim_end)
+                    processing_audio = trim_tmp_path
+                    base_time_offset = trim_start
+
+                    adjusted_excludes = [
+                        (start - trim_start, end - trim_start)
+                        for start, end in regions_config.excludes
+                    ]
+                    adjusted_config = RegionConfig(
+                        trim=(0.0, trim_end - trim_start),
+                        excludes=adjusted_excludes,
+                    )
+                    chunks_to_process = resolve_regions(adjusted_config, trim_end - trim_start)
+                else:
+                    chunks_to_process = resolve_regions(regions_config, duration)
+
                 is_chunked = True
             except Exception as e:
                 global_logger.write(f"    取得音檔長度失敗，忽略區段設定: {e}")
 
-        # Open the target file once
-        with output_file.open("w", encoding="utf-8") as target:
-            if not is_chunked or not chunks_to_process:
-                # Process the whole file at once
-                self._process_and_write_chunk(audio_path, target, offset=0.0)
-            else:
-                # Process each valid chunk
-                global_logger.write(f"    將處理 {len(chunks_to_process)} 個有效區段...")
-                for i, (start, end) in enumerate(chunks_to_process):
-                    chunk_path = self.tmp_dir / f"chunk_{i}.flac"
-                    global_logger.write(f"    > 擷取區段 [{i+1}/{len(chunks_to_process)}]: {start:.2f}s -> {end:.2f}s")
-                    extract_audio_chunk(audio_path, chunk_path, start, end)
-                    
-                    try:
-                        self._process_and_write_chunk(chunk_path, target, offset=start)
-                    finally:
-                        if chunk_path.exists():
-                            chunk_path.unlink()
+        try:
+            # Open the target file once
+            with output_file.open("w", encoding="utf-8") as target:
+                if not is_chunked or not chunks_to_process:
+                    # Process the whole file (or trimmed file) at once
+                    self._process_and_write_chunk(processing_audio, target, offset=base_time_offset)
+                else:
+                    # Process each valid chunk
+                    global_logger.write(f"    將處理 {len(chunks_to_process)} 個有效區段...")
+                    for i, (start, end) in enumerate(chunks_to_process):
+                        chunk_path = self.tmp_dir / f"chunk_{i}.flac"
+                        global_logger.write(f"    > 擷取區段 [{i+1}/{len(chunks_to_process)}]: {start:.2f}s -> {end:.2f}s")
+                        extract_audio_chunk(processing_audio, chunk_path, start, end)
+
+                        try:
+                            self._process_and_write_chunk(chunk_path, target, offset=base_time_offset + start)
+                        finally:
+                            if chunk_path.exists():
+                                chunk_path.unlink()
+        finally:
+            if trim_tmp_path is not None and trim_tmp_path.exists():
+                trim_tmp_path.unlink()
 
         global_logger.write(f"    已產出文字檔案: {output_file}")
 
