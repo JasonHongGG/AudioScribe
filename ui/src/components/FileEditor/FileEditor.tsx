@@ -49,9 +49,9 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
         const ws = WaveSurfer.create({
             container: containerRef.current,
-            waveColor: '#4f4f5a', // Tmp fallback color
-            progressColor: '#facc15', // Tmp fallback color
-            cursorColor: '#facc15',
+            waveColor: '#facc15', // Base waveform color yellow
+            progressColor: '#ca8a04', // Darker yellow for progress
+            cursorColor: '#ffffff',
             cursorWidth: 2,
             barWidth: 3,
             barGap: 2,
@@ -116,7 +116,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
                 };
                 updateTask(task.id, { segments: [initialSegment] });
             } else {
-                renderRegionsAndGradient(); // Initial render if moving between files
+                renderRegions(); // Initial render if moving between files
             }
         });
 
@@ -131,82 +131,33 @@ export function FileEditor({ taskId }: { taskId: string }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [task?.id]); // Re-init on file switch
 
-    // 2. Render Gradient & Regions whenever segments change
-    const renderRegionsAndGradient = useCallback(() => {
+    // 2. Render Regions whenever segments change
+    const renderRegions = useCallback(() => {
         if (!wavesurferRef.current || !regionsRef.current || !task?.segments || !duration) return;
-        const ws = wavesurferRef.current;
         const segments = task.segments;
 
         // Clear existing regions
         regionsRef.current.clearRegions();
 
-        // Re-draw regions (just boundaries, no bg)
+        // Re-draw regions with specific overlay colors representing included/excluded
         segments.forEach((seg) => {
-            // Don't draw region for the very last end boundary to avoid duplicate lines
             regionsRef.current?.addRegion({
                 id: seg.id,
                 start: seg.start,
                 end: seg.end,
-                color: 'transparent',
+                // Excluded regions get a dark overlay, Included regions remain totally transparent to show yellow waveform
+                color: seg.included ? 'transparent' : 'rgba(24, 24, 27, 0.75)',
                 drag: false, // Prevent dragging the whole region
                 resize: true, // Allow resizing edges
             });
         });
 
-        // Generate Canvas Gradient based on include/exclude
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        // Create broad gradient for colors based on segments percentages
-        const waveGrad = ctx.createLinearGradient(0, 0, containerRef.current!.offsetWidth, 0);
-        // const progressGrad = ctx.createLinearGradient(0, 0, containerRef.current!.offsetWidth, 0); // Currently unused
-
-        // CSS variables
-        const colorPrimary = '#facc15'; // yellow highlight
-        const colorDark = '#3f3f46';    // dark gray excluded
-
-        segments.forEach(seg => {
-            const startPercent = Math.max(0, seg.start / duration);
-            // Hack: create sharp color stops
-            const color = seg.included ? colorPrimary : colorDark;
-            waveGrad.addColorStop(startPercent, color);
-            // Small offset to make sharp edges
-            if (startPercent + 0.0001 <= 1) {
-                waveGrad.addColorStop(startPercent + 0.0001, color);
-            }
-        });
-
-        ws.setOptions({
-            waveColor: waveGrad,
-            progressColor: waveGrad // Or make progress slightly brighter
-        });
-
     }, [task?.segments, duration]);
 
-    // Handle container resize to redraw gradients properly when window enlarges
-    const prevWidthRef = useRef(0);
+    // Redraw regions only when segments structure fundamentally changes
     useEffect(() => {
-        if (!containerRef.current) return;
-        const observer = new ResizeObserver((entries) => {
-            for (const entry of entries) {
-                if (entry.contentRect.width !== prevWidthRef.current && prevWidthRef.current !== 0) {
-                    prevWidthRef.current = entry.contentRect.width;
-                    requestAnimationFrame(() => {
-                        renderRegionsAndGradient();
-                    });
-                } else if (prevWidthRef.current === 0) {
-                    prevWidthRef.current = entry.contentRect.width;
-                }
-            }
-        });
-        observer.observe(containerRef.current);
-        return () => observer.disconnect();
-    }, [renderRegionsAndGradient]);
-
-    useEffect(() => {
-        renderRegionsAndGradient();
-    }, [renderRegionsAndGradient]);
+        renderRegions();
+    }, [renderRegions]);
 
     // 3. Zoom Handling (Wheel on waveform and timeline)
     const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
