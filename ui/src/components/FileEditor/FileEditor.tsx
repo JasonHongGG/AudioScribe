@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
-import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
 import { useStore, AudioSegment, TrimRange } from '../../store';
 import { Scissors, CheckSquare, XSquare, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -26,7 +25,6 @@ export function FileEditor({ taskId }: { taskId: string }) {
     const setActiveTool = useStore(state => state.setActiveTool);
 
     const containerRef = useRef<HTMLDivElement>(null);
-    const timelineRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
 
     const currentToolRef = useActiveTool();
@@ -34,14 +32,20 @@ export function FileEditor({ taskId }: { taskId: string }) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [zoom, setZoom] = useState(50); // initial zoom pixels per second
+    const [zoom, setZoom] = useState(50); // pixels per second
+    const [minZoom, setMinZoom] = useState(1);
     const [scrollOffset, setScrollOffset] = useState(0); // For syncing custom overlays
+
+    const MAX_ZOOM = 180; // finest visible precision remains at second-level timeline ticks
 
     const getTimelineMetrics = useCallback(() => {
         const ws = wavesurferRef.current;
         const viewportWidth = ws?.getWidth() ?? containerRef.current?.clientWidth ?? 0;
         const scrollLeft = ws?.getScroll() ?? 0;
-        const totalWidth = duration > 0 ? Math.max(viewportWidth, duration * zoom) : viewportWidth;
+        const wrapperWidth = ws?.getWrapper()?.scrollWidth ?? 0;
+        const totalWidth = wrapperWidth > 0
+            ? wrapperWidth
+            : (duration > 0 ? Math.max(viewportWidth, duration * zoom) : viewportWidth);
 
         return {
             viewportWidth,
@@ -52,7 +56,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
     // 1. Initialize WaveSurfer
     useEffect(() => {
-        if (!containerRef.current || !timelineRef.current || !task) return;
+        if (!containerRef.current || !task) return;
 
         // Destroy previous instance
         if (wavesurferRef.current) {
@@ -75,18 +79,6 @@ export function FileEditor({ taskId }: { taskId: string }) {
             hideScrollbar: true,
         });
 
-        const timeline = TimelinePlugin.create({
-            container: timelineRef.current,
-            height: 24,
-            timeInterval: 5,
-            primaryLabelInterval: 10,
-            style: {
-                fontSize: '11px',
-                color: '#a1a1aa',
-            },
-        });
-
-        ws.registerPlugin(timeline);
         wavesurferRef.current = ws;
 
         // Load Audio Source
@@ -113,6 +105,15 @@ export function FileEditor({ taskId }: { taskId: string }) {
         ws.on('ready', () => {
             const audioDuration = ws.getDuration();
             setDuration(audioDuration);
+
+            if (audioDuration > 0) {
+                const fitZoom = Math.max(0.5, ws.getWidth() / audioDuration);
+                setMinZoom(fitZoom);
+                const initialZoom = Math.min(Math.max(fitZoom, 0.5), MAX_ZOOM);
+                setZoom(initialZoom);
+                ws.zoom(initialZoom);
+            }
+
             const defaultTrim: TrimRange = {
                 start: 0,
                 end: audioDuration,
@@ -158,7 +159,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
             ws.destroy();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [task?.id, zoom]); // Re-init on file switch
+    }, [task?.id]); // Re-init on file switch
 
     // 3. Zoom Handling (Wheel on waveform and timeline)
     const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -169,7 +170,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
         if (isTimelineHover) {
             e.preventDefault();
-            const newZoom = Math.max(10, Math.min(1000, zoom - e.deltaY * 0.1));
+            const newZoom = Math.max(minZoom, Math.min(MAX_ZOOM, zoom - e.deltaY * 0.08));
             setZoom(newZoom);
             wavesurferRef.current.zoom(newZoom);
         } else {
@@ -411,6 +412,14 @@ export function FileEditor({ taskId }: { taskId: string }) {
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
     };
 
+    const pickTimelineStep = (pixelsPerSecond: number) => {
+        const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+        for (const step of steps) {
+            if (step * pixelsPerSecond >= 56) return step;
+        }
+        return 3600;
+    };
+
     if (!task) return null;
 
     return (
@@ -585,9 +594,46 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
                     {/* Timeline Container */}
                     <div
-                        ref={timelineRef}
-                        className="timeline-container w-full absolute bottom-0 left-0 bg-background-dark/50 border-t border-white/5 cursor-ew-resize"
-                    />
+                        className="timeline-container w-full h-6 absolute bottom-0 left-0 bg-background-dark/50 border-t border-white/5 cursor-ew-resize overflow-hidden"
+                    >
+                        {(() => {
+                            const { viewportWidth, totalWidth } = getTimelineMetrics();
+                            if (!duration || totalWidth <= 0 || viewportWidth <= 0) return null;
+
+                            const pxPerSec = totalWidth / duration;
+                            const stepSec = pickTimelineStep(pxPerSec); // minimum is always 1s
+                            const visibleStart = (scrollOffset / totalWidth) * duration;
+                            const visibleEnd = ((scrollOffset + viewportWidth) / totalWidth) * duration;
+
+                            const startTick = Math.floor(visibleStart / stepSec) * stepSec;
+                            const ticks: number[] = [];
+                            for (let tick = startTick; tick <= visibleEnd + stepSec; tick += stepSec) {
+                                if (tick >= 0 && tick <= duration) {
+                                    ticks.push(tick);
+                                }
+                            }
+
+                            return (
+                                <>
+                                    {ticks.map((tick) => {
+                                        const x = (tick / duration) * totalWidth - scrollOffset;
+                                        return (
+                                            <div
+                                                key={tick}
+                                                className="absolute bottom-0"
+                                                style={{ left: `${x}px`, transform: 'translateX(-0.5px)' }}
+                                            >
+                                                <div className="w-px h-3 bg-white/25" />
+                                                <div className="text-[11px] leading-none text-foreground-muted mt-1 -translate-x-1/2 whitespace-nowrap">
+                                                    {formatTime(tick)}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </>
+                            );
+                        })()}
+                    </div>
 
                     {/* Center Playhead Overlay (Visual Only) */}
                     <div className="absolute top-0 bottom-0 left-1/2 w-[1px] bg-white/20 pointer-events-none z-20 shadow-[0_0_10px_rgba(255,255,255,0.5)]" />
