@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { useStore, AudioSegment, TrimRange } from '../../store';
-import { Scissors, CheckSquare, XSquare, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Scissors, CheckSquare, XSquare, Play, Pause, SkipBack, SkipForward, Volume2 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -32,6 +32,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
+    const [volume, setVolume] = useState(1);
     const [zoom, setZoom] = useState(50); // pixels per second
     const [minZoom, setMinZoom] = useState(1);
     const [scrollOffset, setScrollOffset] = useState(0); // For syncing custom overlays
@@ -160,6 +161,10 @@ export function FileEditor({ taskId }: { taskId: string }) {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [task?.id]); // Re-init on file switch
+
+    useEffect(() => {
+        wavesurferRef.current?.setVolume(volume);
+    }, [volume]);
 
     // 3. Zoom Handling (Wheel on waveform and timeline)
     const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -674,8 +679,8 @@ export function FileEditor({ taskId }: { taskId: string }) {
                     </button>
                 </div>
 
-                {/* Seek Bar (Optional duplicate control) */}
-                <div className="w-64 flex items-center">
+                {/* Playback Seek + Volume */}
+                <div className="w-[360px] flex flex-col gap-2">
                     <input
                         type="range"
                         min={0}
@@ -688,6 +693,26 @@ export function FileEditor({ taskId }: { taskId: string }) {
                         }}
                         className="w-full h-2 rounded-lg appearance-none bg-surface-active cursor-pointer outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
                     />
+
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 text-foreground-muted shrink-0">
+                            <Volume2 size={16} />
+                            <span className="text-xs font-mono w-10 text-right">{Math.round(volume * 100)}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            value={volume}
+                            step={0.01}
+                            onChange={(e) => {
+                                const newVolume = parseFloat(e.target.value);
+                                setVolume(newVolume);
+                                wavesurferRef.current?.setVolume(newVolume);
+                            }}
+                            className="w-full h-2 rounded-lg appearance-none bg-surface-active cursor-pointer outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
+                        />
+                    </div>
                 </div>
 
             </div>
