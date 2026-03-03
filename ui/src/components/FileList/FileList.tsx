@@ -81,7 +81,11 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
 };
 
 export function FileList() {
-    const { tasks, selectedTaskId, globalProvider, setIsGlobalSettingsOpen, startBatchTranscription } = useStore();
+    const tasks = useStore(state => state.tasks);
+    const selectedTaskId = useStore(state => state.selectedTaskId);
+    const globalProvider = useStore(state => state.globalProvider);
+    const setIsGlobalSettingsOpen = useStore(state => state.setIsGlobalSettingsOpen);
+    const startBatchTranscription = useStore(state => state.startBatchTranscription);
 
     return (
         <div className="w-[340px] flex flex-col h-full border-r border-white/10 bg-background-dark/80 backdrop-blur-xl z-10">

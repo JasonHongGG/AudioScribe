@@ -9,7 +9,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus } from 'lucide-react';
 
 function App() {
-  const { tasks, selectedTaskId } = useStore();
+  const tasks = useStore(state => state.tasks);
+  const selectedTaskId = useStore(state => state.selectedTaskId);
+  const addTask = useStore(state => state.addTask);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -27,7 +29,7 @@ function App() {
           modelSize: 'base',
           segments: null,
         };
-        useStore.getState().addTask(newTask);
+        addTask(newTask);
       });
     }
   };
@@ -39,7 +41,7 @@ function App() {
       <FileList />
 
       {/* Right Content Area */}
-      <div className="flex-1 relative flex flex-col bg-background/50">
+      <div className="flex-1 relative flex flex-col bg-background/50 overflow-hidden min-w-0 min-h-0">
         <AnimatePresence mode="wait">
           {tasks.length === 0 ? (
             <motion.div
@@ -76,7 +78,7 @@ function App() {
               key="editor-state"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex-1 w-full h-full p-6 flex flex-col"
+              className="flex-1 w-full h-full flex flex-col min-w-0 min-h-0 overflow-hidden relative"
             >
               {selectedTaskId ? (
                 <FileEditor taskId={selectedTaskId} />

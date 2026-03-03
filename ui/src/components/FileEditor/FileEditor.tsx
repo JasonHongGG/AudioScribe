@@ -21,8 +21,10 @@ function useActiveTool() {
 }
 
 export function FileEditor({ taskId }: { taskId: string }) {
-    const { tasks, updateTask, activeToolRef, setActiveTool } = useStore();
-    const task = tasks.find(t => t.id === taskId);
+    const task = useStore(state => state.tasks.find(t => t.id === taskId));
+    const updateTask = useStore(state => state.updateTask);
+    const activeToolRef = useStore(state => state.activeToolRef);
+    const setActiveTool = useStore(state => state.setActiveTool);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const timelineRef = useRef<HTMLDivElement>(null);
@@ -181,6 +183,26 @@ export function FileEditor({ taskId }: { taskId: string }) {
         });
 
     }, [task?.segments, duration]);
+
+    // Handle container resize to redraw gradients properly when window enlarges
+    const prevWidthRef = useRef(0);
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.contentRect.width !== prevWidthRef.current && prevWidthRef.current !== 0) {
+                    prevWidthRef.current = entry.contentRect.width;
+                    requestAnimationFrame(() => {
+                        renderRegionsAndGradient();
+                    });
+                } else if (prevWidthRef.current === 0) {
+                    prevWidthRef.current = entry.contentRect.width;
+                }
+            }
+        });
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, [renderRegionsAndGradient]);
 
     useEffect(() => {
         renderRegionsAndGradient();
@@ -383,15 +405,15 @@ export function FileEditor({ taskId }: { taskId: string }) {
     if (!task) return null;
 
     return (
-        <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+        <div className="flex-1 flex flex-col h-full bg-background relative min-w-0 min-h-0 overflow-hidden">
             {/* Top Toolbar */}
             <div className="h-14 border-b border-white/5 flex items-center justify-between px-6 shrink-0 z-10 bg-background/50 backdrop-blur-md">
-                <h3 className="font-medium text-foreground truncate max-w-sm" title={task.name}>
+                <h3 className="font-medium text-foreground truncate min-w-0 pr-4" title={task.name}>
                     {task.name}
                 </h3>
 
                 {/* Tools */}
-                <div className="flex bg-surface rounded-lg p-1 border border-white/5">
+                <div className="flex bg-surface rounded-lg p-1 border border-white/5 shrink-0 ml-4">
                     <ToolButton
                         active={activeToolRef === 'split'}
                         onClick={() => setActiveTool('split')}
@@ -415,7 +437,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
             {/* Editor Main Canvas Area */}
             <div
-                className="flex-1 relative flex flex-col w-full px-6 py-8 select-none"
+                className="flex-1 relative flex flex-col w-full px-6 py-8 select-none min-h-0 min-w-0"
                 onWheel={handleWheel}
             >
                 <div className="w-full flex-1 relative rounded-xl border border-white/5 overflow-hidden bg-surface-hover/30 backdrop-blur-sm shadow-inner group">
@@ -440,10 +462,10 @@ export function FileEditor({ taskId }: { taskId: string }) {
             </div>
 
             {/* Player Dashboard Bottom */}
-            <div className="h-24 border-t border-white/5 bg-background shrink-0 px-8 flex items-center gap-6">
+            <div className="h-24 border-t border-white/5 bg-background shrink-0 px-8 flex items-center gap-6 overflow-hidden w-full">
 
                 {/* Time Display */}
-                <div className="w-32 flex flex-col items-center justify-center font-mono bg-surface py-2 rounded-xl border border-white/5">
+                <div className="w-32 flex flex-col items-center justify-center font-mono bg-surface py-2 rounded-xl border border-white/5 shrink-0">
                     <span className="text-xl font-medium text-primary tracking-wider">{formatTime(currentTime)}</span>
                     <span className="text-xs text-foreground-muted">{formatTime(duration)}</span>
                 </div>
