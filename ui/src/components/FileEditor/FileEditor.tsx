@@ -174,11 +174,12 @@ export function FileEditor({ taskId }: { taskId: string }) {
             setZoom(newZoom);
             wavesurferRef.current.zoom(newZoom);
         } else {
-            // Only pan horizontally if inside main area
-            if (Math.abs(e.deltaX) > 0) {
+            // Waveform area wheel moves the visible timeline position (horizontal pan)
+            const panDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+            if (Math.abs(panDelta) > 0) {
                 e.preventDefault();
                 const ws = wavesurferRef.current;
-                const nextScroll = ws.getScroll() + e.deltaX;
+                const nextScroll = ws.getScroll() + panDelta;
                 ws.setScroll(nextScroll);
                 setScrollOffset(ws.getScroll());
             }
