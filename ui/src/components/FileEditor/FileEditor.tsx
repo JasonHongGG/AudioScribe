@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
-import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
 import { useStore, AudioSegment } from '../../store';
 import { Scissors, CheckSquare, XSquare, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
@@ -29,7 +28,6 @@ export function FileEditor({ taskId }: { taskId: string }) {
     const containerRef = useRef<HTMLDivElement>(null);
     const timelineRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
-    const regionsRef = useRef<RegionsPlugin | null>(null);
 
     const currentToolRef = useActiveTool();
 
@@ -37,6 +35,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [zoom, setZoom] = useState(50); // initial zoom pixels per second
+    const [scrollOffset, setScrollOffset] = useState(0); // For syncing custom overlays
 
     // 1. Initialize WaveSurfer
     useEffect(() => {
@@ -74,13 +73,8 @@ export function FileEditor({ taskId }: { taskId: string }) {
             },
         });
 
-        const regions = RegionsPlugin.create();
-
         ws.registerPlugin(timeline);
-        ws.registerPlugin(regions);
-
         wavesurferRef.current = ws;
-        regionsRef.current = regions;
 
         // Load Audio Source
         const loadAudio = async () => {
@@ -106,7 +100,18 @@ export function FileEditor({ taskId }: { taskId: string }) {
             const audioDuration = ws.getDuration();
             setDuration(audioDuration);
 
-            // Initialize segments if not present
+            // Listen to scroll events to sync our custom overlay later
+            const scrollWrapper = ws.getWrapper();
+            if (scrollWrapper) {
+                // Initialize offset
+                setScrollOffset(scrollWrapper.scrollLeft);
+
+                scrollWrapper.addEventListener('scroll', () => {
+                    setScrollOffset(scrollWrapper.scrollLeft);
+                });
+            }
+
+            // Initialize default single segment if empty
             if (!task.segments || task.segments.length === 0) {
                 const initialSegment: AudioSegment = {
                     id: Math.random().toString(36).substring(7),
@@ -115,8 +120,6 @@ export function FileEditor({ taskId }: { taskId: string }) {
                     included: true
                 };
                 updateTask(task.id, { segments: [initialSegment] });
-            } else {
-                renderRegions(); // Initial render if moving between files
             }
         });
 
@@ -124,40 +127,17 @@ export function FileEditor({ taskId }: { taskId: string }) {
         ws.on('seeking', () => setCurrentTime(ws.getCurrentTime()));
         ws.on('play', () => setIsPlaying(true));
         ws.on('pause', () => setIsPlaying(false));
+        // Update scroll position when zooming
+        ws.on('zoom', () => {
+            const wrapper = ws.getWrapper();
+            if (wrapper) setScrollOffset(wrapper.scrollLeft);
+        });
 
         return () => {
             ws.destroy();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [task?.id]); // Re-init on file switch
-
-    // 2. Render Regions whenever segments change
-    const renderRegions = useCallback(() => {
-        if (!wavesurferRef.current || !regionsRef.current || !task?.segments || !duration) return;
-        const segments = task.segments;
-
-        // Clear existing regions
-        regionsRef.current.clearRegions();
-
-        // Re-draw regions with specific overlay colors representing included/excluded
-        segments.forEach((seg) => {
-            regionsRef.current?.addRegion({
-                id: seg.id,
-                start: seg.start,
-                end: seg.end,
-                // Excluded regions get a dark overlay, Included regions remain totally transparent to show yellow waveform
-                color: seg.included ? 'transparent' : 'rgba(24, 24, 27, 0.75)',
-                drag: false, // Prevent dragging the whole region
-                resize: true, // Allow resizing edges
-            });
-        });
-
-    }, [task?.segments, duration]);
-
-    // Redraw regions only when segments structure fundamentally changes
-    useEffect(() => {
-        renderRegions();
-    }, [renderRegions]);
 
     // 3. Zoom Handling (Wheel on waveform and timeline)
     const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -277,34 +257,60 @@ export function FileEditor({ taskId }: { taskId: string }) {
         }
     };
 
-    // 5. Region Drag/Resize Handling
-    useEffect(() => {
-        if (!regionsRef.current || !task?.segments) return;
+    // 5. Custom Region Drag/Resize Handling State
+    const [draggingHandle, setDraggingHandle] = useState<{ id: string, edge: 'left' | 'right' } | null>(null);
 
-        const onRegionUpdate = (_region: any) => {
-            // Prevent overlapping (simplified logic for now)
-            // Real robust logic needs to bound `region.start` and `region.end` strictly against neighbors
-        };
+    const handleMouseMoveOverlay = useCallback((e: MouseEvent) => {
+        if (!draggingHandle || !wavesurferRef.current || !duration || !task?.segments) return;
 
-        const onRegionUpdateEnd = (region: any) => {
-            // Save to Zustand
-            const newSegs = task.segments!.map(s => {
-                if (s.id === region.id) {
-                    return { ...s, start: region.start, end: region.end };
-                }
-                return s;
-            });
+        const ws = wavesurferRef.current;
+        const rect = containerRef.current!.getBoundingClientRect();
+        const scrollWrapper = ws.getWrapper();
+        if (!scrollWrapper) return;
+
+        const scrollOffset = scrollWrapper.scrollLeft;
+        const xPos = e.clientX - rect.left + scrollOffset;
+        const totalWidth = scrollWrapper.scrollWidth;
+
+        // Clamp time between 0 and duration
+        let newTime = (xPos / totalWidth) * duration;
+        newTime = Math.max(0, Math.min(newTime, duration));
+
+        // Simplified logic: just update the segment boundary directly 
+        // Real logic should prevent overlaps
+        const newSegs = [...task.segments];
+        const segIndex = newSegs.findIndex(s => s.id === draggingHandle.id);
+        if (segIndex !== -1) {
+            const seg = newSegs[segIndex];
+            if (draggingHandle.edge === 'left') {
+                // Prevent dragging left edge past right edge
+                newSegs[segIndex] = { ...seg, start: Math.min(newTime, seg.end - 0.1) };
+            } else {
+                // Prevent dragging right edge past left edge
+                newSegs[segIndex] = { ...seg, end: Math.max(newTime, seg.start + 0.1) };
+            }
+            // Rapid updates for visual feedback, though might be heavy on Zustand depending on frequency
             updateTask(taskId, { segments: newSegs });
-        };
-
-        regionsRef.current.on('region-update', onRegionUpdate);
-        regionsRef.current.on('region-updated', onRegionUpdateEnd);
-
-        return () => {
-            regionsRef.current?.un('region-update', onRegionUpdate);
-            regionsRef.current?.un('region-updated', onRegionUpdateEnd);
         }
-    }, [task?.segments, taskId, updateTask]);
+    }, [draggingHandle, duration, task?.segments, taskId, updateTask]);
+
+    const handleMouseUpOverlay = useCallback(() => {
+        setDraggingHandle(null);
+    }, []);
+
+    useEffect(() => {
+        if (draggingHandle) {
+            window.addEventListener('mousemove', handleMouseMoveOverlay);
+            window.addEventListener('mouseup', handleMouseUpOverlay);
+        } else {
+            window.removeEventListener('mousemove', handleMouseMoveOverlay);
+            window.removeEventListener('mouseup', handleMouseUpOverlay);
+        }
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMoveOverlay);
+            window.removeEventListener('mouseup', handleMouseUpOverlay);
+        };
+    }, [draggingHandle, handleMouseMoveOverlay, handleMouseUpOverlay]);
 
     // Helpers formats
     // 6. Global Keyboard Shortcuts
@@ -396,10 +402,65 @@ export function FileEditor({ taskId }: { taskId: string }) {
                     {/* Main Waveform Container */}
                     <div
                         ref={containerRef}
-                        className="w-full h-[200px] mt-10 cursor-crosshair"
+                        className="w-full h-[200px] mt-10 cursor-crosshair relative overflow-hidden"
                         onClick={handleWaveformClick}
                         onContextMenu={handleContextMenu}
-                    />
+                    >
+                        {/* Custom React Overlay for Regions */}
+                        {task?.segments && duration > 0 && wavesurferRef.current && wavesurferRef.current.getWrapper() && (
+                            <div
+                                className="absolute inset-0 pointer-events-none"
+                                style={{ transform: `translateX(${-scrollOffset}px)` }}
+                            >
+                                {task.segments.map((seg, i) => {
+                                    const totalWidth = wavesurferRef.current!.getWrapper().scrollWidth;
+                                    const leftPx = (seg.start / duration) * totalWidth;
+                                    const widthPx = ((seg.end - seg.start) / duration) * totalWidth;
+
+                                    const isFirst = i === 0;
+                                    const isLast = i === task.segments!.length - 1;
+
+                                    return (
+                                        <div
+                                            key={seg.id}
+                                            className="absolute top-0 bottom-0 pointer-events-auto"
+                                            style={{
+                                                left: `${leftPx}px`,
+                                                width: `${widthPx}px`,
+                                                backgroundColor: seg.included ? 'transparent' : 'rgba(24, 24, 27, 0.75)',
+                                            }}
+                                        >
+                                            {/* Left Boundary Handle */}
+                                            <div
+                                                className={cn(
+                                                    "absolute top-0 bottom-0 z-20 cursor-col-resize select-none",
+                                                    isFirst ? "left-0 w-[12px] bg-primary rounded-l-md shadow-[0_0_15px_rgba(250,204,21,0.4)] hover:bg-white hover:w-[16px]"
+                                                        : "-left-[2px] w-[4px] bg-white rounded-[2px] shadow-[0_0_5px_rgba(0,0,0,0.8),inset_0_0_1px_rgba(0,0,0,0.5)] hover:w-[8px] hover:-left-[4px]"
+                                                )}
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    setDraggingHandle({ id: seg.id, edge: 'left' });
+                                                }}
+                                            />
+
+                                            {/* Right Boundary Handle */}
+                                            <div
+                                                className={cn(
+                                                    "absolute top-0 bottom-0 z-20 cursor-col-resize select-none",
+                                                    isLast ? "right-0 w-[12px] bg-primary rounded-r-md shadow-[0_0_15px_rgba(250,204,21,0.4)] hover:bg-white hover:w-[16px]"
+                                                        : "-right-[2px] w-[4px] bg-white rounded-[2px] shadow-[0_0_5px_rgba(0,0,0,0.8),inset_0_0_1px_rgba(0,0,0,0.5)] hover:w-[8px] hover:-right-[4px]"
+                                                )}
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    setDraggingHandle({ id: seg.id, edge: 'right' });
+                                                }}
+                                            />
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
 
                     {/* Timeline Container */}
                     <div
