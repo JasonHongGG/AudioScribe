@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { useStore, AudioSegment, TrimRange } from '../../store';
-import { Scissors, CheckSquare, XSquare, Play, Pause, SkipBack, SkipForward, Volume2 } from 'lucide-react';
+import { Scissors, CheckSquare, XSquare, Play, Pause, Volume2, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { motion, AnimatePresence } from 'framer-motion';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -66,13 +67,13 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
         const ws = WaveSurfer.create({
             container: containerRef.current,
-            waveColor: '#facc15', // Base waveform color yellow
-            progressColor: '#ca8a04', // Darker yellow for progress
-            cursorColor: '#ffffff',
-            cursorWidth: 2,
+            waveColor: 'rgba(250, 204, 21, 0.25)', // Smooth ambient yellow
+            progressColor: 'rgba(250, 204, 21, 0.9)', // Solid bright yellow
+            cursorColor: 'transparent', // Custom cursor handles playhead
+            cursorWidth: 0,
             barWidth: 3,
-            barGap: 2,
-            barRadius: 3,
+            barGap: 3,
+            barRadius: 4,
             height: 200,
             normalize: true,
             interact: false, // Disable native click-to-seek to allow custom pan/split
@@ -429,58 +430,77 @@ export function FileEditor({ taskId }: { taskId: string }) {
     if (!task) return null;
 
     return (
-        <div className="flex-1 flex flex-col h-full relative min-w-0 min-h-0 overflow-hidden bg-transparent">
+        <motion.div
+            className="flex-1 flex flex-col h-full relative min-w-0 min-h-0 overflow-hidden bg-transparent"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5 }}
+        >
             {/* Top Toolbar */}
-            <div className="h-16 flex items-center justify-between px-6 shrink-0 z-10 w-full relative">
-                <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-1.5 h-6 bg-primary rounded-full shadow-[0_0_10px_rgba(250,204,21,0.6)]" />
-                    <h3 className="text-xl font-bold tracking-tight text-white truncate min-w-0 pr-4" title={task.name}>
+            <motion.div
+                className="h-20 flex items-center justify-between px-8 shrink-0 z-10 w-full relative"
+                initial={{ y: -30, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ type: "spring", damping: 20, stiffness: 100 }}
+            >
+                <div className="flex items-center gap-5 min-w-0 group cursor-default">
+                    <motion.div
+                        className="w-1.5 h-8 bg-primary rounded-full shadow-[0_0_15px_rgba(250,204,21,0.8)]"
+                        whileHover={{ scaleY: 1.2, filter: "brightness(1.2)" }}
+                    />
+                    <h3 className="text-2xl font-black tracking-tight text-white/90 truncate min-w-0 pr-4 group-hover:text-white transition-colors duration-300 drop-shadow-[0_2px_10px_rgba(255,255,255,0.1)]" title={task.name}>
                         {task.name}
                     </h3>
                 </div>
 
-                {/* Tools */}
-                <div className="flex bg-surface-active/50 rounded-xl p-1.5 border border-white/[0.05] shrink-0 ml-4 backdrop-blur-md shadow-lg">
+                {/* Animated Segmented Control */}
+                <div className="flex bg-surface-active/30 rounded-[1.25rem] p-1.5 border border-white/[0.04] shrink-0 ml-4 backdrop-blur-2xl shadow-[0_8px_30px_-10px_rgba(0,0,0,0.5)]">
                     <ToolButton
-                        active={activeToolRef === 'split'}
+                        id="split"
+                        activeId={activeToolRef}
                         onClick={() => setActiveTool('split')}
                         icon={<Scissors size={18} />}
                         label="Split"
-                        color="text-primary"
+                        color="text-primary group-hover:drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]"
                     />
                     <ToolButton
-                        active={activeToolRef === 'include'}
+                        id="include"
+                        activeId={activeToolRef}
                         onClick={() => setActiveTool('include')}
                         icon={<CheckSquare size={18} />}
                         label="Include"
-                        color="text-green-400"
+                        color="text-primary group-hover:drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]"
                     />
                     <ToolButton
-                        active={activeToolRef === 'exclude'}
+                        id="exclude"
+                        activeId={activeToolRef}
                         onClick={() => setActiveTool('exclude')}
                         icon={<XSquare size={18} />}
                         label="Exclude"
-                        color="text-danger-light"
+                        color="text-primary group-hover:drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]"
                     />
                 </div>
-            </div>
+            </motion.div>
 
             {/* Editor Main Canvas Area */}
-            <div
-                className="flex-1 relative flex flex-col w-full px-6 pb-28 pt-4 select-none min-h-0 min-w-0 z-0"
+            <motion.div
+                className="flex-1 relative flex flex-col w-full px-8 pb-48 pt-2 select-none min-h-0 min-w-0 z-0"
                 onWheel={handleWheel}
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
             >
-                <div className="w-full h-full relative rounded-[2rem] border border-white/[0.05] overflow-hidden glass-card group flex flex-col shadow-2xl bg-gradient-to-b from-white/[0.02] to-transparent">
+                <div className="w-full h-full relative rounded-[2.5rem] border border-white/[0.04] overflow-hidden glass-card group/canvas flex flex-col shadow-[0_20px_80px_rgba(0,0,0,0.8)] bg-gradient-to-b from-white/[0.02] to-transparent backdrop-blur-3xl">
                     {/* Inner Edge Highlight */}
-                    <div className="absolute inset-0 rounded-[2rem] border-[1.5px] border-white/10 pointer-events-none mix-blend-overlay" />
+                    <div className="absolute inset-0 rounded-[2.5rem] border border-white/[0.08] pointer-events-none mix-blend-overlay z-10" />
 
                     {/* Main Waveform Container */}
                     <div
-                        ref={containerRef}
-                        className="w-full flex-1 cursor-crosshair relative overflow-hidden mt-6"
+                        className="w-full flex-1 cursor-crosshair relative overflow-hidden flex items-center"
                         onClick={handleWaveformClick}
                         onContextMenu={handleContextMenu}
                     >
+                        <div ref={containerRef} className="w-full" />
                         {/* Custom React Overlay for Regions */}
                         {task?.segments && duration > 0 && wavesurferRef.current && wavesurferRef.current.getWrapper() && (
                             <div
@@ -501,18 +521,18 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                         <>
                                             {/* Trim Out of Bounds Areas */}
                                             <div
-                                                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[2px]"
+                                                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px] transition-all duration-300"
                                                 style={{ left: 0, width: `${Math.max(0, trimStartPx)}px` }}
                                             />
                                             <div
-                                                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[2px]"
+                                                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px] transition-all duration-300"
                                                 style={{ left: `${trimEndPx}px`, width: `${Math.max(0, viewportWidth - trimEndPx)}px` }}
                                             />
 
                                             {/* Trim Start Handle */}
                                             <div
                                                 className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex items-center justify-center group/handle"
-                                                style={{ left: `${trimStartPx}px`, transform: 'translateX(-50%)', width: '20px' }}
+                                                style={{ left: `${trimStartPx}px`, transform: 'translateX(-50%)', width: '24px' }}
                                                 onMouseDown={(e) => {
                                                     e.stopPropagation();
                                                     e.preventDefault();
@@ -521,13 +541,17 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                 }}
                                                 onClick={(e) => e.stopPropagation()}
                                             >
-                                                <div className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_15px_rgba(250,204,21,0.8)] group-hover/handle:w-[6px] transition-all duration-200 group-hover/handle:h-[70%]" />
+                                                <motion.div
+                                                    className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_20px_rgba(250,204,21,1)]"
+                                                    whileHover={{ width: 8, height: "70%" }}
+                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                />
                                             </div>
 
                                             {/* Trim End Handle */}
                                             <div
                                                 className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex items-center justify-center group/handle"
-                                                style={{ left: `${trimEndPx}px`, transform: 'translateX(-50%)', width: '20px' }}
+                                                style={{ left: `${trimEndPx}px`, transform: 'translateX(-50%)', width: '24px' }}
                                                 onMouseDown={(e) => {
                                                     e.stopPropagation();
                                                     e.preventDefault();
@@ -536,7 +560,11 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                 }}
                                                 onClick={(e) => e.stopPropagation()}
                                             >
-                                                <div className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_15px_rgba(250,204,21,0.8)] group-hover/handle:w-[6px] transition-all duration-200 group-hover/handle:h-[70%]" />
+                                                <motion.div
+                                                    className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_20px_rgba(250,204,21,1)]"
+                                                    whileHover={{ width: 8, height: "70%" }}
+                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                />
                                             </div>
 
                                             {/* Segments */}
@@ -552,21 +580,21 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                 return (
                                                     <div
                                                         key={seg.id}
-                                                        className="absolute top-0 bottom-0 pointer-events-auto group/seg"
+                                                        className="absolute top-0 bottom-0 pointer-events-auto group/seg transition-colors duration-300"
                                                         style={{
                                                             left: `${leftPx}px`,
                                                             width: `${widthPx}px`,
-                                                            backgroundColor: seg.included ? 'transparent' : 'rgba(15, 15, 19, 0.85)',
-                                                            backdropFilter: seg.included ? 'none' : 'blur(4px)',
+                                                            backgroundColor: seg.included ? 'transparent' : 'rgba(15, 15, 19, 0.75)',
+                                                            backdropFilter: seg.included ? 'none' : 'blur(8px)',
                                                         }}
                                                     >
                                                         {/* Segment Hover Outline */}
-                                                        <div className="absolute inset-0 border border-white/0 group-hover/seg:border-white/20 transition-colors pointer-events-none" />
+                                                        <div className="absolute inset-0 border-[1.5px] border-white/0 group-hover/seg:border-white/10 transition-colors duration-300 pointer-events-none rounded-sm" />
 
                                                         {/* Left Boundary Handle (Split) */}
                                                         {!isFirst && (
                                                             <div
-                                                                className="absolute top-0 bottom-0 -left-[10px] w-[20px] z-20 flex items-center justify-center cursor-col-resize pointer-events-auto group/split"
+                                                                className="absolute top-0 bottom-0 -left-[12px] w-[24px] z-20 flex items-center justify-center cursor-col-resize pointer-events-auto group/split"
                                                                 onMouseDown={(e) => {
                                                                     e.stopPropagation();
                                                                     e.preventDefault();
@@ -577,14 +605,18 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                                 }}
                                                                 onClick={(e) => e.stopPropagation()}
                                                             >
-                                                                <div className="w-[2px] h-[80%] bg-white/50 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.4)] group-hover/split:w-[4px] group-hover/split:bg-white group-hover/split:h-full transition-all duration-200" />
+                                                                <motion.div
+                                                                    className="w-[2px] h-[80%] bg-white/40 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+                                                                    whileHover={{ width: 5, backgroundColor: "#fff", height: "80%", boxShadow: "0 0 15px rgba(255,255,255,0.8)" }}
+                                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                                />
                                                             </div>
                                                         )}
 
                                                         {/* Right Boundary Handle (Split) */}
                                                         {!isLast && (
                                                             <div
-                                                                className="absolute top-0 bottom-0 -right-[10px] w-[20px] z-20 flex items-center justify-center cursor-col-resize pointer-events-auto group/split"
+                                                                className="absolute top-0 bottom-0 -right-[12px] w-[24px] z-20 flex items-center justify-center cursor-col-resize pointer-events-auto group/split"
                                                                 onMouseDown={(e) => {
                                                                     e.stopPropagation();
                                                                     e.preventDefault();
@@ -595,7 +627,11 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                                 }}
                                                                 onClick={(e) => e.stopPropagation()}
                                                             >
-                                                                <div className="w-[2px] h-[80%] bg-white/50 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.4)] group-hover/split:w-[4px] group-hover/split:bg-white group-hover/split:h-full transition-all duration-200" />
+                                                                <motion.div
+                                                                    className="w-[2px] h-[80%] bg-white/40 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+                                                                    whileHover={{ width: 5, backgroundColor: "#fff", height: "80%", boxShadow: "0 0 15px rgba(255,255,255,0.8)" }}
+                                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                                />
                                                             </div>
                                                         )}
                                                     </div>
@@ -605,26 +641,32 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                     );
                                 })()}
 
-                                {dragTooltip && draggingBoundary !== null && (
-                                    <div
-                                        className="absolute top-4 z-40 pointer-events-none"
-                                        style={{
-                                            left: `${dragTooltip.leftPx - scrollOffset}px`,
-                                            transform: 'translateX(-50%)',
-                                        }}
-                                    >
-                                        <div className="rounded-xl border border-white/20 bg-background-base/90 px-3 py-1.5 text-xs font-mono font-bold tracking-wider text-primary shadow-2xl backdrop-blur-xl">
-                                            {formatTime(dragTooltip.time)}
-                                        </div>
-                                    </div>
-                                )}
+                                <AnimatePresence>
+                                    {dragTooltip && draggingBoundary !== null && (
+                                        <motion.div
+                                            className="absolute top-6 z-40 pointer-events-none"
+                                            style={{
+                                                left: `${dragTooltip.leftPx - scrollOffset}px`,
+                                                transform: 'translateX(-50%)',
+                                            }}
+                                            initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                        >
+                                            <div className="rounded-xl border border-white/20 bg-background-base/95 px-4 py-2 text-sm font-mono font-bold tracking-wider text-primary shadow-[0_15px_30px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+                                                {formatTime(dragTooltip.time)}
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
                         )}
                     </div>
 
                     {/* Timeline Container */}
                     <div
-                        className="timeline-container w-full h-8 absolute bottom-0 left-0 bg-background-base/80 backdrop-blur-md border-t border-white/[0.05] cursor-ew-resize overflow-hidden z-10"
+                        className="timeline-container w-full h-10 absolute bottom-0 left-0 bg-background-base/50 backdrop-blur-2xl border-t border-white/[0.04] cursor-ew-resize overflow-hidden z-10"
                     >
                         {(() => {
                             const { viewportWidth, totalWidth } = getTimelineMetrics();
@@ -650,11 +692,11 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                         return (
                                             <div
                                                 key={tick}
-                                                className="absolute bottom-0 h-full flex flex-col justify-end pb-1"
+                                                className="absolute bottom-0 h-full flex flex-col justify-end pb-1.5"
                                                 style={{ left: `${x}px`, transform: 'translateX(-0.5px)' }}
                                             >
-                                                <div className="w-px h-2 bg-white/20 mx-auto" />
-                                                <div className="text-[10px] uppercase font-mono tracking-widest leading-none text-foreground-muted/60 mt-1 -translate-x-1/2 whitespace-nowrap">
+                                                <div className="w-px h-2.5 bg-white/30 mx-auto" />
+                                                <div className="text-[10px] uppercase font-mono tracking-widest leading-none text-foreground-muted/70 mt-1.5 -translate-x-1/2 whitespace-nowrap">
                                                     {formatTime(tick)}
                                                 </div>
                                             </div>
@@ -665,52 +707,32 @@ export function FileEditor({ taskId }: { taskId: string }) {
                         })()}
                     </div>
 
-                    {/* Center Playhead Overlay (Visual Only) */}
-                    <div className="absolute top-0 bottom-0 left-1/2 w-[2px] bg-white text-glow pointer-events-none z-40 shadow-[0_0_15px_rgba(255,255,255,0.8)] flex items-center justify-center">
-                        <div className="w-2 h-2 rounded-full bg-white shadow-xl" />
+                    {/* Center Playhead Overlay (Visual Only) - Throbbing Neon Outline */}
+                    <div className="absolute top-0 bottom-0 left-1/2 w-[2px] bg-primary/80 pointer-events-none z-40 shadow-[0_0_20px_rgba(250,204,21,1)] flex items-center justify-center mix-blend-screen">
+                        <motion.div
+                            className="w-3 h-3 rounded-full bg-primary shadow-[0_0_15px_rgba(250,204,21,1)]"
+                            animate={{ scale: isPlaying ? [1, 1.4, 1] : 1, opacity: isPlaying ? [0.8, 1, 0.8] : 1 }}
+                            transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                        />
                     </div>
                 </div>
-            </div>
+            </motion.div>
 
             {/* Player Dashboard Bottom - Floating Dock Console */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 h-20 bg-background-base/80 backdrop-blur-3xl border border-white/[0.08] rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] shrink-0 px-8 flex items-center justify-between gap-8 z-50 overflow-hidden w-[90%] max-w-[800px] group transition-all duration-500 hover:shadow-[0_10px_50px_rgba(250,204,21,0.1)] hover:border-white/[0.12]">
+            <motion.div
+                className="absolute bottom-6 left-1/2 w-[95%] max-w-[1000px] bg-background-base/90 backdrop-blur-3xl border border-white/[0.08] rounded-[2rem] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.1)] flex flex-col z-50 overflow-hidden px-10 py-5 gap-3"
+                initial={{ y: 80, opacity: 0, x: '-50%' }}
+                animate={{ y: 0, opacity: 1, x: '-50%' }}
+                transition={{ type: "spring", damping: 25, stiffness: 200, delay: 0.2 }}
+                whileHover={{ y: -2, transition: { duration: 0.3, ease: "easeOut" }, boxShadow: "0 30px 60px -20px rgba(0,0,0,1), 0 0 40px rgba(250,204,21,0.06), inset 0 1px 0 rgba(255,255,255,0.15)" }}
+            >
+                {/* Top Row: Progress Bar + Time */}
+                <div className="flex items-center gap-4 w-full">
+                    <span className="text-[13px] font-mono font-bold tracking-wider text-primary text-glow drop-shadow-[0_0_8px_rgba(250,204,21,0.5)] w-16 text-right shrink-0">
+                        {formatTime(currentTime)}
+                    </span>
 
-                {/* Subtile background glow inside dock */}
-                <div className="absolute inset-0 bg-gradient-to-t from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-                {/* Time Display */}
-                <div className="w-32 flex flex-col items-center justify-center font-mono py-2 rounded-2xl shrink-0 relative">
-                    <span className="text-xl font-bold tracking-widest text-primary text-glow drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]">{formatTime(currentTime)}</span>
-                    <span className="text-[10px] text-foreground-muted/60 tracking-widest uppercase mt-0.5">{formatTime(duration)}</span>
-                </div>
-
-                {/* Transport Controls */}
-                <div className="flex items-center justify-center gap-5 flex-1 relative z-10">
-                    <button
-                        onClick={() => { wavesurferRef.current?.skip(-5) }}
-                        className="w-10 h-10 flex items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/10 transition-all active:scale-95"
-                    >
-                        <SkipBack size={18} />
-                    </button>
-
-                    <button
-                        onClick={() => { wavesurferRef.current?.playPause() }}
-                        className="w-14 h-14 flex items-center justify-center rounded-full bg-gradient-to-tr from-primary-active to-primary text-background-base hover:scale-105 transition-all shadow-[0_0_20px_rgba(250,204,21,0.4)] hover:shadow-[0_0_30px_rgba(250,204,21,0.6)] active:scale-95"
-                    >
-                        {isPlaying ? <Pause size={24} className="fill-current" /> : <Play size={24} className="fill-current translate-x-0.5" />}
-                    </button>
-
-                    <button
-                        onClick={() => { wavesurferRef.current?.skip(5) }}
-                        className="w-10 h-10 flex items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/10 transition-all active:scale-95"
-                    >
-                        <SkipForward size={18} />
-                    </button>
-                </div>
-
-                {/* Playback Seek + Volume */}
-                <div className="w-[300px] flex flex-col gap-3 relative z-10">
-                    <div className="group/slider relative">
+                    <div className="group/slider relative h-5 flex items-center flex-1 cursor-pointer">
                         <input
                             type="range"
                             min={0}
@@ -721,54 +743,156 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                 const newTime = parseFloat(e.target.value);
                                 wavesurferRef.current?.setTime(newTime);
                             }}
-                            className="w-full h-1.5 rounded-full appearance-none bg-surface-active cursor-pointer outline-none transition-all [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(250,204,21,0.8)] [&::-webkit-slider-thumb]:transition-transform hover:[&::-webkit-slider-thumb]:scale-125"
+                            className="w-full h-full rounded-full appearance-none bg-transparent cursor-pointer outline-none absolute inset-0 z-10 opacity-0"
                         />
-                        <div
-                            className="absolute left-0 top-0 h-full bg-primary rounded-full pointer-events-none opacity-50 shadow-[0_0_10px_rgba(250,204,21,0.5)]"
-                            style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                        <div className="absolute left-0 right-0 h-1.5 bg-surface-active rounded-full overflow-hidden pointer-events-none transition-all duration-300 group-hover/slider:h-2.5">
+                            <div
+                                className="h-full bg-primary rounded-full relative shadow-[0_0_15px_rgba(250,204,21,0.6)]"
+                                style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                            >
+                                <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-r from-transparent to-white/40" />
+                            </div>
+                        </div>
+                        <motion.div
+                            className="absolute h-3.5 w-3.5 bg-white rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.5),0_0_15px_rgba(250,204,21,0.8)] pointer-events-none"
+                            style={{ left: `calc(${duration > 0 ? (currentTime / duration) * 100 : 0}% - 7px)` }}
+                            initial={false}
+                            animate={{ scale: 1 }}
+                            whileHover={{ scale: 1.4 }}
                         />
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 text-foreground-muted/80 shrink-0">
-                            <Volume2 size={14} />
-                            <span className="text-[10px] font-mono w-10 text-right tracking-widest">{Math.round(volume * 100)}%</span>
+                    <span className="text-[13px] font-mono font-medium tracking-wider text-foreground-muted w-16 text-left shrink-0">
+                        {formatTime(duration)}
+                    </span>
+                </div>
+
+                {/* Bottom Row: Controls */}
+                <div className="flex items-center justify-between w-full mt-1">
+                    {/* Left: Empty for balance */}
+                    <div className="w-[180px] flex items-center">
+                    </div>
+
+                    {/* Center: Transport */}
+                    <div className="flex items-center justify-center gap-4 flex-1 relative z-10">
+                        <motion.button
+                            onClick={() => { wavesurferRef.current?.skip(-5) }}
+                            className="w-10 h-10 flex flex-col items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors gap-0.5"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            title="-5s"
+                        >
+                            <ChevronsLeft size={20} />
+                            <span className="text-[8px] font-bold leading-none">-5</span>
+                        </motion.button>
+
+                        <motion.button
+                            onClick={() => { wavesurferRef.current?.skip(-1) }}
+                            className="w-10 h-10 flex flex-col items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors gap-0.5"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            title="-1s"
+                        >
+                            <ChevronLeft size={22} />
+                            <span className="text-[8px] font-bold leading-none">-1</span>
+                        </motion.button>
+
+                        <motion.button
+                            onClick={() => { wavesurferRef.current?.playPause() }}
+                            className="w-14 h-14 flex items-center justify-center rounded-full bg-primary text-black shadow-[0_5px_20px_rgba(250,204,21,0.4)] mx-2"
+                            whileHover={{ scale: 1.05, boxShadow: "0 8px 30px rgba(250,204,21,0.6)" }}
+                            whileTap={{ scale: 0.95, boxShadow: "0 2px 10px rgba(250,204,21,0.3)" }}
+                        >
+                            {isPlaying ? <Pause size={26} className="fill-current" /> : <Play size={26} className="fill-current translate-x-0.5" />}
+                        </motion.button>
+
+                        <motion.button
+                            onClick={() => { wavesurferRef.current?.skip(1) }}
+                            className="w-10 h-10 flex flex-col items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors gap-0.5"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            title="+1s"
+                        >
+                            <ChevronRight size={22} />
+                            <span className="text-[8px] font-bold leading-none">+1</span>
+                        </motion.button>
+
+                        <motion.button
+                            onClick={() => { wavesurferRef.current?.skip(5) }}
+                            className="w-10 h-10 flex flex-col items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors gap-0.5"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            title="+5s"
+                        >
+                            <ChevronsRight size={20} />
+                            <span className="text-[8px] font-bold leading-none">+5</span>
+                        </motion.button>
+                    </div>
+
+                    {/* Right: Volume */}
+                    <div className="w-[180px] flex items-center gap-4 justify-end">
+                        <div className="group/vol relative h-5 flex items-center w-28 cursor-pointer">
+                            <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                value={volume}
+                                step={0.01}
+                                onChange={(e) => {
+                                    const newVolume = parseFloat(e.target.value);
+                                    setVolume(newVolume);
+                                    wavesurferRef.current?.setVolume(newVolume);
+                                }}
+                                className="w-full h-full rounded-full appearance-none bg-transparent cursor-pointer outline-none absolute inset-0 z-10 opacity-0"
+                            />
+                            <div className="absolute left-0 right-0 h-1.5 bg-surface-active rounded-full overflow-hidden pointer-events-none transition-all duration-300 group-hover/vol:h-2">
+                                <div
+                                    className="h-full bg-white/80 rounded-full"
+                                    style={{ width: `${volume * 100}%` }}
+                                />
+                            </div>
+                            <div
+                                className="absolute h-3 w-3 bg-white rounded-full shadow-md pointer-events-none"
+                                style={{ left: `calc(${volume * 100}% - 6px)` }}
+                            />
                         </div>
-                        <input
-                            type="range"
-                            min={0}
-                            max={1}
-                            value={volume}
-                            step={0.01}
-                            onChange={(e) => {
-                                const newVolume = parseFloat(e.target.value);
-                                setVolume(newVolume);
-                                wavesurferRef.current?.setVolume(newVolume);
-                            }}
-                            className="w-full h-1 rounded-full appearance-none bg-surface-active cursor-pointer outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary-light hover:[&::-webkit-slider-thumb]:scale-125 transition-transform"
-                        />
+                        <div className="text-foreground-muted/80 shrink-0 w-5 flex justify-center">
+                            <Volume2 size={18} className="text-white/80" />
+                        </div>
                     </div>
                 </div>
 
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 }
 
-// Helper Sub-component
-function ToolButton({ active, onClick, icon, label, color }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, color?: string }) {
+// Helper Sub-component with Framer Motion Layout
+function ToolButton({ id, activeId, onClick, icon, label, color }: { id: string, activeId: string, onClick: () => void, icon: React.ReactNode, label: string, color?: string }) {
+    const isActive = activeId === id;
+
     return (
         <button
             onClick={onClick}
             className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 tracking-wide",
-                active
-                    ? `bg-background-base shadow-sm border border-white/10 ${color} shadow-[0_0_15px_currentColor] opacity-100`
-                    : "text-foreground-muted/70 hover:text-foreground hover:bg-white/[0.03] border border-transparent opacity-80"
+                "relative flex items-center gap-2.5 px-6 py-2.5 rounded-[1rem] text-sm font-bold transition-colors duration-300 tracking-wide z-10 group outline-none",
+                isActive
+                    ? `text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]`
+                    : "text-foreground-muted/70 hover:text-foreground hover:bg-white/[0.02]"
             )}
         >
-            {icon}
-            {label}
+            {isActive && (
+                <motion.div
+                    layoutId="activeToolBubble"
+                    className="absolute inset-0 bg-white/[0.08] border border-white/20 rounded-[1rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_0_20px_rgba(255,255,255,0.05)]"
+                    initial={false}
+                    transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                />
+            )}
+            <span className={cn("relative z-10 transition-colors duration-300", isActive ? color : "text-foreground-muted group-hover:text-white")}>
+                {icon}
+            </span>
+            <span className="relative z-10">{label}</span>
         </button>
     );
 }
