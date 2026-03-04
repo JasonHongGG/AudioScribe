@@ -26,6 +26,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
     const setActiveTool = useStore(state => state.setActiveTool);
 
     const containerRef = useRef<HTMLDivElement>(null);
+    const glassCardRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
 
     const currentToolRef = useActiveTool();
@@ -89,14 +90,19 @@ export function FileEditor({ taskId }: { taskId: string }) {
                 if (task.file) {
                     // Native Web API File
                     const url = URL.createObjectURL(task.file);
-                    ws.load(url);
+                    await ws.load(url);
                 } else if (task.file_path) {
                     // Tauri Absolute Path
                     const assetUrl = convertFileSrc(task.file_path);
-                    ws.load(assetUrl);
+                    await ws.load(assetUrl);
                 }
-            } catch (err) {
-                console.error("Failed to load audio source:", err);
+            } catch (err: any) {
+                if (err.name === 'AbortError') {
+                    // Harmless React 18 Strict Mode double-mount unmount abort
+                    console.log("Audio load aborted (expected in Strict Mode)");
+                } else {
+                    console.error("Failed to load audio source:", err);
+                }
             }
         };
 
@@ -163,34 +169,75 @@ export function FileEditor({ taskId }: { taskId: string }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [task?.id]); // Re-init on file switch
 
+    // 2. Window Resize Handling to fix React Overlay sync
+    const [, setResizeTick] = useState(0);
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const observer = new ResizeObserver(() => {
+            // Force a re-render so getTimelineMetrics() returns updated viewportWidth
+            setResizeTick(t => t + 1);
+        });
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, []);
+
     useEffect(() => {
         wavesurferRef.current?.setVolume(volume);
     }, [volume]);
 
-    // 3. Zoom Handling (Wheel on waveform and timeline)
-    const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-        if (!wavesurferRef.current) return;
+    // 3. Zoom Handling — use native addEventListener with { passive: false }
+    useEffect(() => {
+        const el = glassCardRef.current;
+        if (!el) return;
 
-        // Check if ctrl/cmd key is pressed or if just scrolling timeline
-        const isTimelineHover = (e.target as HTMLElement).closest('.timeline-container');
+        const handleWheel = (e: WheelEvent) => {
+            const ws = wavesurferRef.current;
+            if (!ws) return;
 
-        if (isTimelineHover) {
+            console.log('[WHEEL] fired', { deltaX: e.deltaX, deltaY: e.deltaY, target: (e.target as HTMLElement).className });
+
+            // Need to use classList check because composedPath handles shadow DOMs better
+            const path = e.composedPath() as HTMLElement[];
+            const isTimelineHover = path.some(node => node.classList && node.classList.contains('timeline-container'));
+
+            console.log('[WHEEL] isTimelineHover:', isTimelineHover);
+
+            // Prevent browser's default scrolling behavior (requires passive: false)
             e.preventDefault();
-            const newZoom = Math.max(minZoom, Math.min(MAX_ZOOM, zoom - e.deltaY * 0.08));
-            setZoom(newZoom);
-            wavesurferRef.current.zoom(newZoom);
-        } else {
-            // Waveform area wheel moves the visible timeline position (horizontal pan)
-            const panDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-            if (Math.abs(panDelta) > 0) {
-                e.preventDefault();
-                const ws = wavesurferRef.current;
-                const nextScroll = ws.getScroll() + panDelta;
-                ws.setScroll(nextScroll);
-                setScrollOffset(ws.getScroll());
+
+            if (isTimelineHover) {
+                // Vertical scroll on timeline = zoom
+                if (Math.abs(e.deltaY) > 0) {
+                    const currentZoom = ws.options.minPxPerSec || minZoom;
+                    const nextZoom = Math.max(minZoom, Math.min(MAX_ZOOM, currentZoom - e.deltaY * 0.1));
+                    setZoom(nextZoom);
+                    ws.zoom(nextZoom);
+                }
+                // Horizontal scroll on timeline = pan
+                if (Math.abs(e.deltaX) > 0) {
+                    const maxScroll = ws.getWrapper().scrollWidth - ws.getWidth();
+                    const nextScroll = Math.max(0, Math.min(maxScroll, ws.getScroll() + e.deltaX));
+                    ws.setScroll(nextScroll);
+                    setScrollOffset(ws.getScroll());
+                }
+            } else {
+                // Waveform area: any wheel translates to horizontal pan
+                const panDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+                if (Math.abs(panDelta) > 0) {
+                    const maxScroll = ws.getWrapper().scrollWidth - ws.getWidth();
+                    let nextScroll = ws.getScroll() + panDelta;
+                    nextScroll = Math.max(0, Math.min(maxScroll, nextScroll));
+                    ws.setScroll(nextScroll);
+                    setScrollOffset(ws.getScroll());
+                }
             }
-        }
-    };
+        };
+
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        return () => el.removeEventListener('wheel', handleWheel);
+    }, [minZoom]);
+
+
 
     // 4. Interaction Handlers (Split & Mute)
     const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -485,12 +532,11 @@ export function FileEditor({ taskId }: { taskId: string }) {
             {/* Editor Main Canvas Area */}
             <motion.div
                 className="flex-1 relative flex flex-col w-full px-8 pb-48 pt-2 select-none min-h-0 min-w-0 z-0"
-                onWheel={handleWheel}
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
             >
-                <div className="w-full h-full relative rounded-[2.5rem] border border-white/[0.04] overflow-hidden glass-card group/canvas flex flex-col shadow-[0_20px_80px_rgba(0,0,0,0.8)] bg-gradient-to-b from-white/[0.02] to-transparent backdrop-blur-3xl">
+                <div ref={glassCardRef} className="w-full h-full relative rounded-[2.5rem] border border-white/[0.04] overflow-hidden glass-card group/canvas flex flex-col shadow-[0_20px_80px_rgba(0,0,0,0.8)] bg-gradient-to-b from-white/[0.02] to-transparent backdrop-blur-3xl">
                     {/* Inner Edge Highlight */}
                     <div className="absolute inset-0 rounded-[2.5rem] border border-white/[0.08] pointer-events-none mix-blend-overlay z-10" />
 
@@ -666,7 +712,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
                     {/* Timeline Container */}
                     <div
-                        className="timeline-container w-full h-10 absolute bottom-0 left-0 bg-background-base/50 backdrop-blur-2xl border-t border-white/[0.04] cursor-ew-resize overflow-hidden z-10"
+                        className="timeline-container w-full h-10 absolute bottom-0 left-0 bg-background-base/50 backdrop-blur-2xl border-t border-white/[0.04] cursor-ew-resize overflow-hidden z-40"
                     >
                         {(() => {
                             const { viewportWidth, totalWidth } = getTimelineMetrics();
@@ -697,7 +743,10 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                             >
                                                 <div className="w-px h-2.5 bg-white/30 mx-auto" />
                                                 <div className="text-[10px] uppercase font-mono tracking-widest leading-none text-foreground-muted/70 mt-1.5 -translate-x-1/2 whitespace-nowrap">
-                                                    {formatTime(tick)}
+                                                    {stepSec >= 1
+                                                        ? formatTime(tick).split('.')[0]
+                                                        : formatTime(tick)
+                                                    }
                                                 </div>
                                             </div>
                                         );
