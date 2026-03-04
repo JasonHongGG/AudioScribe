@@ -1,52 +1,80 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background-dark: #0a0a0c;
-  --color-background: #141417;
-  --color-background-light: #1f1f23;
+  --color-background-base: #030305;
+  --color-background-dark: #09090b;
+  --color-background: #0f0f13;
+  --color-background-light: #18181c;
+  
   --color-foreground: #fafafa;
   --color-foreground-muted: #a1a1aa;
   
+  /* Exquisite Vibrant Gold / Amber Accents */
+  --color-primary-light: #fef08a;
   --color-primary: #facc15;
   --color-primary-hover: #eab308;
   --color-primary-active: #ca8a04;
+  --color-primary-glow: rgba(250, 204, 21, 0.4);
   
+  --color-danger-light: #fca5a5;
   --color-danger: #ef4444;
   --color-danger-hover: #dc2626;
 
-  --color-surface: rgba(255, 255, 255, 0.05);
-  --color-surface-hover: rgba(255, 255, 255, 0.1);
-  --color-surface-active: rgba(255, 255, 255, 0.15);
+  /* Glass/Surface layers */
+  --color-surface: rgba(255, 255, 255, 0.03);
+  --color-surface-hover: rgba(255, 255, 255, 0.06);
+  --color-surface-active: rgba(255, 255, 255, 0.1);
+  --color-surface-border: rgba(255, 255, 255, 0.08);
+
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
 @layer base {
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
   body {
-    background-color: var(--color-background);
+    background-color: var(--color-background-base);
     color: var(--color-foreground);
     @apply antialiased overflow-hidden select-none text-sm;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: var(--font-sans);
+    letter-spacing: -0.01em;
   }
 
-  /* Custom Scrollbar for dark theme */
+  /* Exquisite Invisible-until-hover Scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-surface-hover);
-    border-radius: 4px;
+    background: transparent;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background-color 0.3s ease;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-surface-active);
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-surface-hover);
+  }
+  *:hover::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-surface-active);
   }
 }
 
 @layer utilities {
   .glass-panel {
-    @apply bg-background-light/60 backdrop-blur-md border border-white/10 shadow-xl;
+    @apply bg-background-light/40 backdrop-blur-xl border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.4)];
+  }
+
+  .glass-card {
+    @apply bg-surface backdrop-blur-md border border-white/[0.05] shadow-[0_4px_24px_rgba(0,0,0,0.2)] rounded-2xl;
+  }
+
+  .glass-button {
+    @apply bg-surface hover:bg-surface-hover backdrop-blur-md border border-white/[0.05] shadow-sm rounded-xl transition-all duration-300;
   }
   
   [data-tauri-drag-region] {
@@ -55,5 +83,13 @@
   
   .tauri-no-drag {
     -webkit-app-region: no-drag;
+  }
+
+  .text-glow {
+    text-shadow: 0 0 20px var(--color-primary-glow);
+  }
+
+  .box-glow {
+    box-shadow: 0 0 30px var(--color-primary-glow);
   }
 }

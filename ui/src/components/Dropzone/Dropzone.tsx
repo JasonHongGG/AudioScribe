@@ -77,32 +77,38 @@ export function Dropzone() {
         <AnimatePresence>
             {isDragging && (
                 <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md border-[6px] border-primary pointer-events-auto"
+                    initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+                    animate={{ opacity: 1, backdropFilter: 'blur(16px)' }}
+                    exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+                    transition={{ duration: 0.3 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-background-base/50 border-[2px] border-primary/50 shadow-[inset_0_0_150px_rgba(250,204,21,0.15)] pointer-events-auto"
                 >
                     <motion.div
-                        initial={{ scale: 0.9, y: 10 }}
-                        animate={{ scale: 1, y: 0 }}
-                        transition={{ type: "spring", bounce: 0.5 }}
-                        className="flex flex-col items-center justify-center p-8 rounded-2xl glass-panel shadow-[0_0_50px_rgba(250,204,21,0.2)]"
+                        initial={{ scale: 0.85, y: 20, filter: 'blur(10px)' }}
+                        animate={{ scale: 1, y: 0, filter: 'blur(0px)' }}
+                        exit={{ scale: 1.05, opacity: 0, filter: 'blur(10px)' }}
+                        transition={{ type: "spring", bounce: 0.4, duration: 0.6 }}
+                        className="flex flex-col items-center justify-center p-12 pr-12 rounded-[2.5rem] bg-gradient-to-b from-white/[0.08] to-white/[0.02] backdrop-blur-3xl border border-white/10 box-glow"
                     >
-                        <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mb-6 border border-primary/50 relative">
-                            <UploadCloud className="w-10 h-10 text-primary" />
-                            {/* Ripple effect */}
+                        <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-primary/30 to-primary/5 flex items-center justify-center mb-8 border border-primary/40 relative shadow-2xl">
+                            <UploadCloud className="w-12 h-12 text-primary drop-shadow-[0_0_15px_rgba(250,204,21,0.8)]" />
+                            {/* Expanding Ripple Circles */}
                             <motion.div
-                                className="absolute inset-0 rounded-full border border-primary pointer-events-none"
-                                animate={{ scale: [1, 1.5], opacity: [0.8, 0] }}
-                                transition={{ repeat: Infinity, duration: 1.5, ease: "easeOut" }}
+                                className="absolute inset-0 rounded-full border-2 border-primary/60 pointer-events-none"
+                                animate={{ scale: [1, 1.8], opacity: [1, 0] }}
+                                transition={{ repeat: Infinity, duration: 1.8, ease: "easeOut" }}
+                            />
+                            <motion.div
+                                className="absolute inset-0 rounded-full border border-primary/30 pointer-events-none"
+                                animate={{ scale: [1, 2.2], opacity: [0.8, 0] }}
+                                transition={{ repeat: Infinity, duration: 2.2, ease: "easeOut", delay: 0.4 }}
                             />
                         </div>
-                        <h2 className="text-2xl font-bold tracking-tight text-white mb-2">
-                            Drop to Add to Queue
+                        <h2 className="text-4xl font-extrabold tracking-tight text-white mb-3 text-glow">
+                            Drop to Import
                         </h2>
-                        <p className="text-foreground-muted font-medium">
-                            Release mouse to instantly import media files
+                        <p className="text-primary-light/80 font-medium text-lg font-mono tracking-widest uppercase">
+                            Release to begin processing
                         </p>
                     </motion.div>
                 </motion.div>
