@@ -2,7 +2,7 @@ import os
 import re
 from datetime import timedelta
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from audioscribe.interfaces.stt import STTProvider
 from audioscribe.utils.ffmpeg import extract_audio_chunk, get_audio_duration
@@ -17,13 +17,27 @@ class BatchTranscriber:
         stt_provider: STTProvider,
         audio_dir: str = "audio",
         output_dir: str = "output",
+        progress_callback: Callable[[int], None] | None = None,
     ) -> None:
         self.stt_provider = stt_provider
         self.audio_dir = Path(audio_dir)
         self.output_dir = Path(output_dir)
         self.tmp_dir = Path("tmp")
+        self.progress_callback = progress_callback
+        self._last_progress = 0
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    def _report_progress(self, value: int) -> None:
+        if self.progress_callback is None:
+            return
+
+        clamped = max(0, min(100, int(value)))
+        if clamped <= self._last_progress:
+            return
+
+        self._last_progress = clamped
+        self.progress_callback(clamped)
 
     def iter_audio_files(self) -> Iterable[Path]:
         if not self.audio_dir.exists():
@@ -37,6 +51,9 @@ class BatchTranscriber:
         )
 
     def transcribe_file(self, audio_path: Path) -> None:
+        self._last_progress = 0
+        self._report_progress(5)
+
         output_file = self.output_dir / f"{audio_path.stem}.txt"
         global_logger.write(f"    產出文字檔案到: {output_file}")
 
@@ -49,11 +66,17 @@ class BatchTranscriber:
         processing_audio = audio_path
         base_time_offset = 0.0
         trim_tmp_path: Path | None = None
+        original_duration = 0.0
+
+        try:
+            original_duration = get_audio_duration(audio_path)
+        except Exception:
+            original_duration = 0.0
 
         if regions_config is not None:
             global_logger.write(f"    找到區段設定檔: {regions_file.name}")
             try:
-                duration = get_audio_duration(audio_path)
+                duration = original_duration if original_duration > 0 else get_audio_duration(audio_path)
                 trim_start, trim_end = resolve_trim_range(regions_config, duration)
 
                 if trim_start > 0.0 or trim_end < duration:
@@ -81,22 +104,49 @@ class BatchTranscriber:
             except Exception as e:
                 global_logger.write(f"    取得音檔長度失敗，忽略區段設定: {e}")
 
+        self._report_progress(15)
+
         try:
             # Open the target file once
             with output_file.open("w", encoding="utf-8") as target:
                 if not is_chunked or not chunks_to_process:
                     # Process the whole file (or trimmed file) at once
-                    self._process_and_write_chunk(processing_audio, target, offset=base_time_offset)
+                    self._report_progress(25)
+                    effective_duration = original_duration
+                    if base_time_offset > 0 and original_duration > 0:
+                        effective_duration = max(0.0, original_duration - base_time_offset)
+                    self._process_and_write_chunk(
+                        processing_audio,
+                        target,
+                        offset=base_time_offset,
+                        progress_start=25,
+                        progress_end=90,
+                        duration_hint=effective_duration,
+                    )
+                    self._report_progress(90)
                 else:
                     # Process each valid chunk
                     global_logger.write(f"    將處理 {len(chunks_to_process)} 個有效區段...")
                     for i, (start, end) in enumerate(chunks_to_process):
+                        chunk_count = len(chunks_to_process)
+                        progress_base = 20 + int((i / max(1, chunk_count)) * 70)
+                        progress_next = 20 + int(((i + 1) / max(1, chunk_count)) * 70)
+                        self._report_progress(progress_base)
+
                         chunk_path = self.tmp_dir / f"chunk_{i}.flac"
                         global_logger.write(f"    > 擷取區段 [{i+1}/{len(chunks_to_process)}]: {start:.2f}s -> {end:.2f}s")
                         extract_audio_chunk(processing_audio, chunk_path, start, end)
 
                         try:
-                            self._process_and_write_chunk(chunk_path, target, offset=base_time_offset + start)
+                            self._process_and_write_chunk(
+                                chunk_path,
+                                target,
+                                offset=base_time_offset + start,
+                                progress_start=progress_base,
+                                progress_end=progress_next,
+                                duration_hint=max(0.0, end - start),
+                            )
+                            self._report_progress(progress_next)
                         finally:
                             if chunk_path.exists():
                                 chunk_path.unlink()
@@ -105,8 +155,17 @@ class BatchTranscriber:
                 trim_tmp_path.unlink()
 
         global_logger.write(f"    已產出文字檔案: {output_file}")
+        self._report_progress(100)
 
-    def _process_and_write_chunk(self, audio_path: Path, target, offset: float) -> None:
+    def _process_and_write_chunk(
+        self,
+        audio_path: Path,
+        target,
+        offset: float,
+        progress_start: int,
+        progress_end: int,
+        duration_hint: float = 0.0,
+    ) -> None:
         """Processes a single audio file/chunk and writes the result to the target file."""
         result = self.stt_provider.transcribe(audio_path)
         
@@ -136,6 +195,11 @@ class BatchTranscriber:
                     
                 global_logger.write(f"    {line}")
                 target.write(line + "\n")
+
+                if duration_hint > 0 and progress_end > progress_start:
+                    ratio = max(0.0, min(1.0, segment.end / duration_hint))
+                    stepped = progress_start + int((progress_end - progress_start) * ratio)
+                    self._report_progress(stepped)
         else:
             # No timestamps — collect all text and split into readable lines
             all_texts: list[str] = []
@@ -148,6 +212,9 @@ class BatchTranscriber:
             for line in lines:
                 global_logger.write(f"    {line}")
                 target.write(line + "\n")
+
+            # If timestamps are unavailable, emit at least a chunk-level completion step.
+            self._report_progress(progress_end)
 
     @staticmethod
     def _split_text_lines(text: str) -> list[str]:

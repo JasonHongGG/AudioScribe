@@ -53,6 +53,7 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
                     </span>
                     <span className="text-[10px] text-foreground-muted mt-0.5 uppercase tracking-wider font-mono opacity-80">
                         {task.status}
+                        {task.status === 'transcribing' ? ` ${Math.max(0, Math.min(100, Math.floor(task.progress)))}%` : ''}
                     </span>
                 </div>
 

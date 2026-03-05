@@ -1,12 +1,41 @@
 // AudioScribe Frontend-Backend API Integration Layer
 
+import { fetch } from '@tauri-apps/plugin-http';
 import { FileTask } from '../store';
 
 const API_BASE_URL = 'http://127.0.0.1:8000';
+const MAX_POLL_MS = 30 * 60 * 1000;
+
+type StartTranscribeResponse = {
+    status: 'accepted' | 'error';
+    job_id?: string;
+    file?: string;
+    message?: string;
+    error?: string;
+};
+
+type JobStatusResponse = {
+    status: 'running' | 'success' | 'error';
+    job_id?: string;
+    file?: string;
+    progress?: number;
+    message?: string;
+    error?: string;
+};
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getPollIntervalMs(elapsedMs: number): number {
+    if (elapsedMs < 60_000) return 3000;
+    return 5000;
+}
 
 export interface TranscribeResponse {
     status: 'success' | 'error';
     file?: string;
+    progress?: number;
     message?: string;
     error?: string;
 }
@@ -35,7 +64,8 @@ export const api = {
         provider: 'faster-whisper' | 'qwen3-asr',
         modelSize: string,
         trimRange: FileTask['trimRange'],
-        segments: FileTask['segments']
+        segments: FileTask['segments'],
+        onProgress?: (progress: number) => void
     ): Promise<TranscribeResponse> {
         try {
             // Build dynamic regions config
@@ -74,8 +104,50 @@ export const api = {
                 return { status: 'error', error: `HTTP Error: ${response.status}` };
             }
 
-            const data = await response.json();
-            return data as TranscribeResponse;
+            const startData = await response.json() as StartTranscribeResponse;
+            if (startData.status !== 'accepted' || !startData.job_id) {
+                return {
+                    status: 'error',
+                    error: startData.error ?? startData.message ?? 'Failed to start transcription job'
+                };
+            }
+
+            const startedAt = Date.now();
+            while (Date.now() - startedAt < MAX_POLL_MS) {
+                const elapsedMs = Date.now() - startedAt;
+                await sleep(getPollIntervalMs(elapsedMs));
+
+                const statusRes = await fetch(`${API_BASE_URL}/jobs/${startData.job_id}`, {
+                    method: 'GET',
+                });
+
+                if (!statusRes.ok) {
+                    return { status: 'error', error: `Job polling HTTP Error: ${statusRes.status}` };
+                }
+
+                const statusData = await statusRes.json() as JobStatusResponse;
+                if (statusData.status === 'running') {
+                    if (typeof statusData.progress === 'number') {
+                        onProgress?.(Math.max(0, Math.min(99, Math.floor(statusData.progress))));
+                    }
+                    continue;
+                }
+                if (statusData.status === 'success') {
+                    onProgress?.(100);
+                    return {
+                        status: 'success',
+                        file: statusData.file ?? startData.file,
+                        progress: 100,
+                    };
+                }
+
+                return {
+                    status: 'error',
+                    error: statusData.error ?? statusData.message ?? 'Transcription job failed',
+                };
+            }
+
+            return { status: 'error', error: 'Transcription polling timed out' };
 
         } catch (error) {
             console.error("API error during transcribe request:", error);

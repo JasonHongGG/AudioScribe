@@ -2,6 +2,10 @@ import logging
 import asyncio
 import os
 import sys
+import subprocess
+import threading
+import uuid
+from dataclasses import dataclass
 
 # --- Windows CUDA DLL Fix ---
 # nvidia-cublas-cu12 (and similar) installed via pip place DLLs inside
@@ -43,10 +47,6 @@ from pydantic import BaseModel
 from pathlib import Path
 
 from audioscribe.logger import global_logger, get_log_stream
-from audioscribe.batch_transcriber import BatchTranscriber
-from audioscribe.interfaces.stt import STTProvider
-# We will dynamically instantiate providers later, but mock it for now
-from audioscribe.stt.faster_whisper_provider import FasterWhisperSTTProvider
 
 @app.get("/health")
 def health_check():
@@ -61,57 +61,185 @@ async def stream_logs():
 
 import json
 
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+TMP_DIR = BASE_DIR / "tmp"
+TMP_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass(slots=True)
+class JobState:
+    proc: subprocess.Popen
+    result_file: Path
+    progress_file: Path
+    file_name: str
+
+
+jobs: dict[str, JobState] = {}
+
+
+def _forward_worker_output(job_id: str, proc: subprocess.Popen) -> None:
+    if proc.stdout is None:
+        return
+
+    for raw_line in proc.stdout:
+        line = raw_line.strip()
+        if not line:
+            continue
+        global_logger.write(f"[JOB {job_id}] {line}")
+
 class TranscribeRequest(BaseModel):
     file_path: str
     provider: str
     model_size: str
     regions: dict | None = None
 
+
+class JobPollResponse(BaseModel):
+    status: str
+    file: str | None = None
+    progress: int | None = None
+    message: str | None = None
+    error: str | None = None
+    job_id: str | None = None
+
+
+def _cleanup_job(job_id: str) -> None:
+    jobs.pop(job_id, None)
+
+
+def _read_result_file(result_file: Path) -> dict:
+    with result_file.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _read_progress_file(progress_file: Path) -> int | None:
+    if not progress_file.exists():
+        return None
+
+    try:
+        with progress_file.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return None
+
+    value = data.get("progress")
+    if isinstance(value, (int, float)):
+        return max(0, min(100, int(value)))
+    return None
+
 @app.post("/transcribe")
 async def transcribe_endpoint(req: TranscribeRequest):
-    """Triggers the transcription process for a specific file."""
+    """Start a background transcription worker and return a job id."""
     audio_path = Path(req.file_path)
     if not audio_path.exists():
-        return {"error": f"File not found: {req.file_path}"}
+        return {"status": "error", "error": f"File not found: {req.file_path}"}
         
     global_logger.write(f"\n[API] Received transcription request for: {audio_path.name}")
     global_logger.write(f"[API] Provider: {req.provider} | Model: {req.model_size}")
 
-    # Write dynamic regions UI config to disk for the transcriber to pick up
-    if req.regions is not None:
-        # Normalize key: frontend sends 'excludes' but backend reads 'exclude'
-        regions_data = dict(req.regions)
-        if 'excludes' in regions_data:
-            val = regions_data.pop('excludes')
-            if val:  # Only include if not None/empty
-                regions_data['exclude'] = val
-        regions_file = audio_path.with_name(audio_path.stem + ".regions.json")
-        with regions_file.open("w", encoding="utf-8") as f:
-            json.dump(regions_data, f, ensure_ascii=False, indent=4)
-        global_logger.write(f"[API] Saved dynamic regions from UI: {regions_file.name}")
-
-    # TODO: Refactor config instantiation out of this scope later to avoid reloading models
     try:
-        if req.provider == "faster-whisper":
-            from audioscribe.config import FasterWhisperConfig
-            config = FasterWhisperConfig(model_size=req.model_size)
-            provider = FasterWhisperSTTProvider(config)
-        else:
-            return {"error": f"Provider not supported yet: {req.provider}"}
-            
-        transcriber = BatchTranscriber(
-            stt_provider=provider,
-            audio_dir=str(audio_path.parent),
-            output_dir=str(audio_path.parent / "output")
+        job_id = uuid.uuid4().hex
+        result_file = TMP_DIR / f"{job_id}.result.json"
+        progress_file = TMP_DIR / f"{job_id}.progress.json"
+        if result_file.exists():
+            result_file.unlink()
+        if progress_file.exists():
+            progress_file.unlink()
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "audioscribe.worker",
+            "--file-path",
+            str(audio_path),
+            "--provider",
+            req.provider,
+            "--model-size",
+            req.model_size,
+            "--result-file",
+            str(result_file),
+            "--progress-file",
+            str(progress_file),
+        ]
+        if req.regions is not None:
+            cmd.extend(["--regions-json", json.dumps(req.regions, ensure_ascii=False)])
+
+        env = os.environ.copy()
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        env.setdefault("PYTHONUNBUFFERED", "1")
+
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(BASE_DIR),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
         )
-        
-        # Run transcription in a separate thread so we don't block the ASGI event loop completely
-        await asyncio.to_thread(transcriber.transcribe_file, audio_path)
-        
-        return {"status": "success", "file": audio_path.name}
+
+        threading.Thread(
+            target=_forward_worker_output,
+            args=(job_id, proc),
+            daemon=True,
+        ).start()
+
+        jobs[job_id] = JobState(
+            proc=proc,
+            result_file=result_file,
+            progress_file=progress_file,
+            file_name=audio_path.name,
+        )
+        global_logger.write(f"[API] Job started: {job_id}")
+
+        return {"status": "accepted", "job_id": job_id, "file": audio_path.name}
     except Exception as e:
         global_logger.write(f"[API] Error during transcription: {e}")
         return {"status": "error", "message": str(e)}
+
+
+@app.get("/jobs/{job_id}", response_model=JobPollResponse)
+async def get_job_status(job_id: str):
+    job = jobs.get(job_id)
+    if job is None:
+        return {"status": "error", "error": f"Job not found: {job_id}"}
+
+    # If result exists, return it immediately even if process teardown lags.
+    if job.result_file.exists():
+        try:
+            payload = _read_result_file(job.result_file)
+            payload.setdefault("progress", 100)
+            payload.setdefault("job_id", job_id)
+            _cleanup_job(job_id)
+            return payload
+        except Exception as exc:  # noqa: BLE001
+            _cleanup_job(job_id)
+            return {
+                "status": "error",
+                "job_id": job_id,
+                "error": f"Failed to read job result: {exc}",
+            }
+
+    if job.proc.poll() is None:
+        progress = _read_progress_file(job.progress_file)
+        return {
+            "status": "running",
+            "job_id": job_id,
+            "file": job.file_name,
+            "progress": progress,
+        }
+
+    code = job.proc.returncode
+    _cleanup_job(job_id)
+    return {
+        "status": "error",
+        "job_id": job_id,
+        "error": f"Worker exited without result file (exit code: {code})",
+    }
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

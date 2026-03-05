@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 from typing import AsyncGenerator
 
 class LogBuffer:
@@ -16,7 +17,19 @@ class LogBuffer:
             self.listeners.remove(q)
 
     def write(self, message: str):
-        print(message)  # Also print to terminal
+        # Keep console logging resilient on Windows code pages (e.g. cp950).
+        try:
+            print(message, flush=True)
+        except UnicodeEncodeError:
+            safe = message.encode("utf-8", errors="backslashreplace").decode("utf-8", errors="ignore")
+            try:
+                print(safe, flush=True)
+            except Exception:
+                try:
+                    sys.stdout.buffer.write((safe + "\n").encode("utf-8", errors="backslashreplace"))
+                    sys.stdout.flush()
+                except Exception:
+                    pass
         try:
             loop = asyncio.get_running_loop()
             for q in self.listeners:

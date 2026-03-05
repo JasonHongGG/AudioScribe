@@ -1,7 +1,5 @@
 audio/*
-output/*
 !audio/.gitkeep
-!output/.gitkeep
 __pycache__/
 .venv/
 tmp/

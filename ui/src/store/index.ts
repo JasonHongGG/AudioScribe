@@ -84,7 +84,7 @@ export const useStore = create<AppState>((set, get) => ({
             // Update to extracting/transcribing
             set((state) => ({
                 tasks: state.tasks.map(t =>
-                    t.id === task.id ? { ...t, status: 'transcribing' } : t
+                    t.id === task.id ? { ...t, status: 'transcribing', progress: 0 } : t
                 )
             }));
 
@@ -94,7 +94,14 @@ export const useStore = create<AppState>((set, get) => ({
                     task.provider,
                     task.modelSize,
                     task.trimRange,
-                    task.segments
+                    task.segments,
+                    (progress) => {
+                        set((state) => ({
+                            tasks: state.tasks.map(t =>
+                                t.id === task.id ? { ...t, progress } : t
+                            )
+                        }));
+                    }
                 );
 
                 // Update based on outcome
@@ -110,7 +117,7 @@ export const useStore = create<AppState>((set, get) => ({
             } catch (err) {
                 set((state) => ({
                     tasks: state.tasks.map(t =>
-                        t.id === task.id ? { ...t, status: 'error' } : t
+                        t.id === task.id ? { ...t, status: 'error', progress: 0 } : t
                     )
                 }));
             }
