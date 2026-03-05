@@ -74,7 +74,8 @@ def parse_regions_config(config_path: Path) -> RegionConfig | None:
         trim: tuple[float, float] | None = None
         if isinstance(trim_data, list) and len(trim_data) == 2:
             trim = (float(trim_data[0]), float(trim_data[1]))
-        excludes = [tuple(r) for r in data.get("exclude", []) if len(r) == 2]
+        exclude_data = data.get("exclude") or []
+        excludes = [tuple(r) for r in exclude_data if isinstance(r, (list, tuple)) and len(r) == 2]
         return RegionConfig(trim=trim, excludes=excludes)
     except Exception as exc:
         logging.warning(f"Failed to parse regions config {config_path}: {exc}")

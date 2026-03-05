@@ -77,11 +77,17 @@ async def transcribe_endpoint(req: TranscribeRequest):
     global_logger.write(f"\n[API] Received transcription request for: {audio_path.name}")
     global_logger.write(f"[API] Provider: {req.provider} | Model: {req.model_size}")
 
-    # Write dynamic regions UI config to disk for the transriber to pick up
+    # Write dynamic regions UI config to disk for the transcriber to pick up
     if req.regions is not None:
+        # Normalize key: frontend sends 'excludes' but backend reads 'exclude'
+        regions_data = dict(req.regions)
+        if 'excludes' in regions_data:
+            val = regions_data.pop('excludes')
+            if val:  # Only include if not None/empty
+                regions_data['exclude'] = val
         regions_file = audio_path.with_name(audio_path.stem + ".regions.json")
         with regions_file.open("w", encoding="utf-8") as f:
-            json.dump(req.regions, f, ensure_ascii=False, indent=4)
+            json.dump(regions_data, f, ensure_ascii=False, indent=4)
         global_logger.write(f"[API] Saved dynamic regions from UI: {regions_file.name}")
 
     # TODO: Refactor config instantiation out of this scope later to avoid reloading models
@@ -110,4 +116,11 @@ async def transcribe_endpoint(req: TranscribeRequest):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     print("Starting AudioScribe Backend Sidecar on port 8000...")
-    uvicorn.run("audioscribe.server:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run(
+        "audioscribe.server:app",
+        host="127.0.0.1",
+        port=8000,
+        reload=True,
+        reload_includes=["*.py"],  # Only reload on Python file changes, not .json
+        timeout_keep_alive=600,    # 10 min keep-alive for long transcriptions
+    )
