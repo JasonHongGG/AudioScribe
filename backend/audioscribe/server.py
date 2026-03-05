@@ -66,7 +66,7 @@ async def transcribe_endpoint(req: TranscribeRequest):
     try:
         if req.provider == "faster-whisper":
             from audioscribe.config import FasterWhisperConfig
-            config = FasterWhisperConfig(model=req.model_size)
+            config = FasterWhisperConfig(model_size=req.model_size)
             provider = FasterWhisperSTTProvider(config)
         else:
             return {"error": f"Provider not supported yet: {req.provider}"}
