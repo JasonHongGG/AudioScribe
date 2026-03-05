@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from audioscribe.config import Qwen3AsrConfig
-from audioscribe.interfaces.stt import STTProvider
+from audioscribe.stt.base import STTProvider
 from audioscribe.models import TranscriptSegment, TranscriptionResult
 
 

@@ -4,13 +4,16 @@ AudioScribe 是純 STT（Speech-to-Text）批次轉錄工具。
 
 ## 架構（STT 模組化）
 
-- `audioscribe/interfaces/stt.py`：`STTProvider` 介面
+- `audioscribe/stt/base.py`：`STTProvider` 抽象介面
+- `audioscribe/stt/provider_registry.py`：provider 建立與註冊
 - `audioscribe/stt/`：STT provider 實作
 	- `faster_whisper_provider.py`
 	- `qwen3_asr_provider.py`
-- `audioscribe/factories/stt_factory.py`：`STTFactory`，負責建立可替換 STT provider
-- `audioscribe/batch_transcriber.py`：批次流程（只依賴 STT 介面）
-- `app.py`：CLI 入口
+- `audioscribe/application/transcription_service.py`：核心轉錄流程
+- `audioscribe/application/job_manager.py`：非同步工作排程與狀態管理
+- `audioscribe/api/http.py`：FastAPI 介面
+- `audioscribe/worker.py`：worker 入口
+- `app.py`：CLI 批次入口
 
 ## 環境與安裝（完全使用 uv）
 

@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Generator
 
 from audioscribe.config import FasterWhisperConfig
-from audioscribe.interfaces.stt import STTProvider
+from audioscribe.stt.base import STTProvider
 from audioscribe.models import TranscriptSegment, TranscriptionResult
 
 
