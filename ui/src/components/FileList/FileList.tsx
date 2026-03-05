@@ -91,12 +91,15 @@ export function FileList() {
     const startBatchTranscription = useStore(state => state.startBatchTranscription);
 
     return (
-        <div className="w-[320px] flex flex-col h-full bg-background-base/40 backdrop-blur-2xl rounded-2xl border border-white/[0.05] shadow-2xl overflow-hidden relative shrink-0">
-            {/* Ambient inner glow */}
-            <div className="absolute -top-20 -left-20 w-40 h-40 bg-primary/5 blur-[50px] pointer-events-none rounded-full" />
+        <div className="w-[320px] flex flex-col h-full bg-background-light/40 backdrop-blur-2xl rounded-2xl border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden relative shrink-0">
+            {/* Darker inner shadow to separate it from the main app body */}
+            <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_60px_rgba(0,0,0,0.5)] z-0" />
+
+            {/* Ambient top glow */}
+            <div className="absolute -top-32 -left-20 w-64 h-64 bg-primary/5 blur-[60px] pointer-events-none rounded-full z-0" />
 
             {/* Header Info Bar */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.05] shrink-0 relative z-10 bg-surface">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.05] shrink-0 relative z-10 bg-black/20 backdrop-blur-md">
                 <div className="flex flex-col gap-1">
                     <span className="text-[10px] text-foreground-muted/60 uppercase tracking-[0.2em] font-bold">
                         Engine Status
@@ -119,19 +122,19 @@ export function FileList() {
             </div>
 
             {/* List Area */}
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5 relative scroll-smooth z-10">
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 relative scroll-smooth z-10">
                 <AnimatePresence mode='popLayout'>
                     {tasks.length === 0 ? (
                         <motion.div
-                            initial={{ opacity: 0, filter: 'blur(5px)' }}
-                            animate={{ opacity: 1, filter: 'blur(0px)' }}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
                             className="absolute inset-0 flex items-center justify-center flex-col text-center p-6 text-foreground-muted"
                         >
-                            <div className="w-14 h-14 rounded-full bg-surface-hover/50 flex items-center justify-center mb-4 border border-white/5 drop-shadow-sm">
-                                <CircleDashed size={24} className="opacity-40" />
+                            <div className="w-16 h-16 rounded-2xl bg-black/20 flex items-center justify-center mb-5 border border-white/5 shadow-[inset_0_2px_10px_rgba(255,255,255,0.02)]">
+                                <CircleDashed size={28} className="opacity-30" />
                             </div>
-                            <p className="text-sm font-semibold tracking-wide text-foreground/80">Queue is empty</p>
-                            <p className="text-xs opacity-50 mt-1 max-w-[180px] leading-relaxed">Drag & drop files to get started.</p>
+                            <p className="text-sm font-bold tracking-widest uppercase text-foreground-muted/80 mb-2">Queue is empty</p>
+                            <p className="text-[11px] opacity-40 max-w-[180px] leading-relaxed font-mono">Drag files over the app to begin.</p>
                         </motion.div>
                     ) : (
                         tasks.map((task) => (
@@ -142,21 +145,21 @@ export function FileList() {
             </div>
 
             {/* Footer / Batch Action */}
-            <div className="p-4 border-t border-white/[0.05] bg-surface-active shrink-0 z-10">
+            <div className="p-5 border-t border-white/[0.05] bg-black/30 backdrop-blur-md shrink-0 z-10">
                 <button
                     onClick={startBatchTranscription}
                     disabled={tasks.length === 0}
                     className={cn(
-                        "w-full py-3 rounded-xl flex items-center justify-center font-bold tracking-wide transition-all duration-300 relative overflow-hidden group",
+                        "w-full py-3.5 rounded-xl flex items-center justify-center font-bold tracking-[0.2em] transition-all duration-300 relative overflow-hidden group uppercase text-[11px]",
                         tasks.length > 0
-                            ? "bg-primary text-background-dark hover:bg-primary-hover shadow-[0_0_20px_rgba(250,204,21,0.3)] hover:shadow-[0_0_30px_rgba(250,204,21,0.5)] transform hover:-translate-y-0.5"
-                            : "bg-background-light/50 text-foreground-muted/40 cursor-not-allowed border border-white/5"
+                            ? "bg-primary text-black hover:bg-primary-hover shadow-[0_0_15px_rgba(250,204,21,0.4)] hover:shadow-[0_0_25px_rgba(250,204,21,0.6)] transform hover:-translate-y-0.5"
+                            : "bg-white/5 text-foreground-muted/30 cursor-not-allowed border border-white/5"
                     )}
                 >
                     {tasks.length > 0 && (
-                        <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-[150%] group-hover:animate-[shimmer_1.5s_infinite]" />
+                        <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-[150%] group-hover:animate-[shimmer_1.5s_infinite]" />
                     )}
-                    <span className="relative z-10 uppercase text-xs">Commence Batch</span>
+                    <span className="relative z-10 w-full text-center">Commence Batch</span>
                 </button>
             </div>
         </div>
