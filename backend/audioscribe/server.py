@@ -1,5 +1,27 @@
 import logging
 import asyncio
+import os
+import sys
+
+# --- Windows CUDA DLL Fix ---
+# nvidia-cublas-cu12 (and similar) installed via pip place DLLs inside
+# site-packages/nvidia/*/bin/ which is NOT on the system PATH.
+# We must register those directories before CTranslate2/faster-whisper tries to load them.
+if sys.platform == "win32":
+    try:
+        import importlib.util
+        _nvidia_spec = importlib.util.find_spec("nvidia")
+        if _nvidia_spec and _nvidia_spec.submodule_search_locations:
+            for _nvidia_dir in _nvidia_spec.submodule_search_locations:
+                from pathlib import Path as _Path
+                for _bin_dir in _Path(_nvidia_dir).rglob("bin"):
+                    if _bin_dir.is_dir():
+                        os.add_dll_directory(str(_bin_dir))
+                        os.environ["PATH"] = str(_bin_dir) + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass  # If nvidia packages aren't installed, silently continue
+# --- End CUDA DLL Fix ---
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
