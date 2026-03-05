@@ -24,16 +24,15 @@ class JobManager:
         self.tmp_dir = base_dir / "tmp"
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self._jobs: dict[str, JobRecord] = {}
+        self._cleanup_stale_artifacts()
 
     def start_job(self, file_path: Path, provider: str, model_size: str, regions: dict | None) -> dict:
         job_id = uuid.uuid4().hex
         result_file = self.tmp_dir / f"{job_id}.result.json"
         progress_file = self.tmp_dir / f"{job_id}.progress.json"
 
-        if result_file.exists():
-            result_file.unlink()
-        if progress_file.exists():
-            progress_file.unlink()
+        self._safe_unlink(result_file)
+        self._safe_unlink(progress_file)
 
         import json
 
@@ -82,7 +81,7 @@ class JobManager:
             payload = read_json(job.result_file)
             payload.setdefault("progress", 100 if payload.get("status") == "success" else None)
             payload.setdefault("job_id", job_id)
-            self._jobs.pop(job_id, None)
+            self._finalize_job(job_id, job)
             return payload
 
         if job.proc.poll() is None:
@@ -99,12 +98,31 @@ class JobManager:
                 "progress": progress,
             }
 
-        self._jobs.pop(job_id, None)
+        self._finalize_job(job_id, job)
         return {
             "status": "error",
             "job_id": job_id,
             "error": f"Worker exited without result file (exit code: {job.proc.returncode})",
         }
+
+    def _finalize_job(self, job_id: str, job: JobRecord) -> None:
+        self._jobs.pop(job_id, None)
+        self._safe_unlink(job.result_file)
+        self._safe_unlink(job.progress_file)
+
+    @staticmethod
+    def _safe_unlink(path: Path) -> None:
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception:
+            # Artifact cleanup should never break API flow.
+            pass
+
+    def _cleanup_stale_artifacts(self) -> None:
+        for pattern in ("*.result.json", "*.progress.json"):
+            for artifact in self.tmp_dir.glob(pattern):
+                self._safe_unlink(artifact)
 
     def _start_log_forwarding(self, job_id: str, proc: subprocess.Popen) -> None:
         def _forward() -> None:
