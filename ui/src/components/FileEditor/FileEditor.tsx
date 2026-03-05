@@ -72,8 +72,8 @@ export function FileEditor({ taskId }: { taskId: string }) {
             container: containerRef.current,
             waveColor: '#5b5b5d', // Mathematically equivalent to rgba(255, 255, 255, 0.35) on the dark background, but SOLID so progressColor doesn't muddy
             progressColor: 'rgba(250, 204, 21, 1)', // Bright yellow for played
-            cursorColor: 'transparent', // Custom cursor handles playhead
-            cursorWidth: 0,
+            cursorColor: 'rgba(250, 204, 21, 1)', // Standard thin playhead
+            cursorWidth: 2,
             barWidth: 3,
             barGap: 3,
             barRadius: 4,
@@ -582,7 +582,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
                                                 {/* Trim Start Handle */}
                                                 <div
-                                                    className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex flex-col items-center justify-center group/handle"
+                                                    className="absolute top-0 bottom-0 z-30 flex items-center justify-center cursor-col-resize pointer-events-auto group/handle"
                                                     style={{ left: `${trimStartPx}px`, transform: 'translateX(-50%)', width: '24px' }}
                                                     onMouseDown={(e) => {
                                                         e.stopPropagation();
@@ -592,21 +592,22 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                     }}
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
-                                                    {/* Top Bracket */}
-                                                    <div className="w-4 h-4 border-t-2 border-l-2 border-primary rounded-tl-md transition-all duration-300 group-hover/handle:w-6 group-hover/handle:-translate-x-1" />
-                                                    {/* Connecting Line */}
                                                     <motion.div
-                                                        className="w-[2px] flex-1 bg-primary shadow-[0_0_15px_rgba(250,204,21,0.8)]"
-                                                        whileHover={{ width: 4, opacity: 1 }}
+                                                        className="w-[3px] h-[90%] bg-primary rounded-full shadow-[0_0_15px_rgba(250,204,21,0.6)] relative flex items-center justify-center"
+                                                        whileHover={{ width: 6, backgroundColor: "#facc15", height: "95%", boxShadow: "0 0 25px rgba(250,204,21,0.9)" }}
                                                         transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                                                    />
-                                                    {/* Bottom Bracket */}
-                                                    <div className="w-4 h-4 border-b-2 border-l-2 border-primary rounded-bl-md transition-all duration-300 group-hover/handle:w-6 group-hover/handle:-translate-x-1" />
+                                                    >
+                                                        <div className="flex flex-col gap-[2px] opacity-0 group-hover/handle:opacity-100 transition-opacity duration-300">
+                                                            <div className="w-[2px] h-[3px] bg-black/60 rounded-full" />
+                                                            <div className="w-[2px] h-[3px] bg-black/60 rounded-full" />
+                                                            <div className="w-[2px] h-[3px] bg-black/60 rounded-full" />
+                                                        </div>
+                                                    </motion.div>
                                                 </div>
 
                                                 {/* Trim End Handle */}
                                                 <div
-                                                    className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex flex-col items-center justify-center group/handle"
+                                                    className="absolute top-0 bottom-0 z-30 flex items-center justify-center cursor-col-resize pointer-events-auto group/handle"
                                                     style={{ left: `${trimEndPx}px`, transform: 'translateX(-50%)', width: '24px' }}
                                                     onMouseDown={(e) => {
                                                         e.stopPropagation();
@@ -616,16 +617,17 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                     }}
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
-                                                    {/* Top Bracket */}
-                                                    <div className="w-4 h-4 border-t-2 border-r-2 border-primary rounded-tr-md transition-all duration-300 group-hover/handle:w-6 group-hover/handle:translate-x-1" />
-                                                    {/* Connecting Line */}
                                                     <motion.div
-                                                        className="w-[2px] flex-1 bg-primary shadow-[0_0_15px_rgba(250,204,21,0.8)]"
-                                                        whileHover={{ width: 4, opacity: 1 }}
+                                                        className="w-[3px] h-[90%] bg-primary rounded-full shadow-[0_0_15px_rgba(250,204,21,0.6)] relative flex items-center justify-center"
+                                                        whileHover={{ width: 6, backgroundColor: "#facc15", height: "95%", boxShadow: "0 0 25px rgba(250,204,21,0.9)" }}
                                                         transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                                                    />
-                                                    {/* Bottom Bracket */}
-                                                    <div className="w-4 h-4 border-b-2 border-r-2 border-primary rounded-br-md transition-all duration-300 group-hover/handle:w-6 group-hover/handle:translate-x-1" />
+                                                    >
+                                                        <div className="flex flex-col gap-[2px] opacity-0 group-hover/handle:opacity-100 transition-opacity duration-300">
+                                                            <div className="w-[2px] h-[3px] bg-black/60 rounded-full" />
+                                                            <div className="w-[2px] h-[3px] bg-black/60 rounded-full" />
+                                                            <div className="w-[2px] h-[3px] bg-black/60 rounded-full" />
+                                                        </div>
+                                                    </motion.div>
                                                 </div>
 
                                                 {/* Segments */}
@@ -733,11 +735,11 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                             return (
                                                 <div
                                                     key={tick}
-                                                    className="absolute bottom-0 h-full flex flex-col justify-end pb-1.5"
-                                                    style={{ left: `${x}px`, transform: 'translateX(-0.5px)' }}
+                                                    className="absolute bottom-0 h-full flex flex-col items-center justify-end pb-1.5"
+                                                    style={{ left: `${x}px`, transform: 'translateX(-50%)' }}
                                                 >
-                                                    <div className="w-px h-2.5 bg-white/30 mx-auto" />
-                                                    <div className="text-[10px] uppercase font-mono tracking-widest leading-none text-foreground-muted/70 mt-1.5 -translate-x-1/2 whitespace-nowrap">
+                                                    <div className="w-px h-2.5 bg-white/30" />
+                                                    <div className="text-[10px] uppercase font-mono tracking-widest leading-none text-foreground-muted/70 mt-1.5 whitespace-nowrap">
                                                         {stepSec >= 1
                                                             ? formatTime(tick).split('.')[0]
                                                             : formatTime(tick)
@@ -751,14 +753,6 @@ export function FileEditor({ taskId }: { taskId: string }) {
                             })()}
                         </div>
 
-                        {/* Center Playhead Overlay (Visual Only) - Throbbing Neon Outline */}
-                        <div className="absolute top-0 bottom-0 left-1/2 w-[2px] bg-primary/80 pointer-events-none z-40 shadow-[0_0_20px_rgba(250,204,21,1)] flex items-center justify-center mix-blend-screen">
-                            <motion.div
-                                className="w-3 h-3 rounded-full bg-primary shadow-[0_0_15px_rgba(250,204,21,1)]"
-                                animate={{ scale: isPlaying ? [1, 1.4, 1] : 1, opacity: isPlaying ? [0.8, 1, 0.8] : 1 }}
-                                transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-                            />
-                        </div>
                     </div>
 
                     {/* Unclipped Overlay Area */}
@@ -845,24 +839,20 @@ export function FileEditor({ taskId }: { taskId: string }) {
                     <div className="flex items-center justify-center gap-4 flex-1 relative z-10">
                         <motion.button
                             onClick={() => { wavesurferRef.current?.skip(-5) }}
-                            className="w-10 h-10 flex flex-col items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors gap-0.5"
+                            className="w-10 h-10 flex items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors"
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
-                            title="-5s"
                         >
-                            <ChevronsLeft size={20} />
-                            <span className="text-[8px] font-bold leading-none">-5</span>
+                            <ChevronsLeft size={28} />
                         </motion.button>
 
                         <motion.button
                             onClick={() => { wavesurferRef.current?.skip(-1) }}
-                            className="w-10 h-10 flex flex-col items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors gap-0.5"
+                            className="w-10 h-10 flex items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors"
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
-                            title="-1s"
                         >
-                            <ChevronLeft size={22} />
-                            <span className="text-[8px] font-bold leading-none">-1</span>
+                            <ChevronLeft size={28} />
                         </motion.button>
 
                         <motion.button
@@ -876,24 +866,20 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
                         <motion.button
                             onClick={() => { wavesurferRef.current?.skip(1) }}
-                            className="w-10 h-10 flex flex-col items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors gap-0.5"
+                            className="w-10 h-10 flex items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors"
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
-                            title="+1s"
                         >
-                            <ChevronRight size={22} />
-                            <span className="text-[8px] font-bold leading-none">+1</span>
+                            <ChevronRight size={28} />
                         </motion.button>
 
                         <motion.button
                             onClick={() => { wavesurferRef.current?.skip(5) }}
-                            className="w-10 h-10 flex flex-col items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors gap-0.5"
+                            className="w-10 h-10 flex items-center justify-center rounded-full text-foreground-muted hover:text-white hover:bg-white/[0.06] transition-colors"
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
-                            title="+5s"
                         >
-                            <ChevronsRight size={20} />
-                            <span className="text-[8px] font-bold leading-none">+5</span>
+                            <ChevronsRight size={28} />
                         </motion.button>
                     </div>
 
