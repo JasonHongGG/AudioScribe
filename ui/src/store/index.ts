@@ -39,6 +39,7 @@ type AppState = {
     // Actions
     addTask: (task: FileTask) => void;
     removeTask: (id: string) => void;
+    resetTask: (id: string) => void;
     updateTask: (id: string, updates: Partial<FileTask>) => void;
     setGlobalProvider: (provider: 'faster-whisper' | 'qwen3-asr') => void;
     setGlobalModelSize: (size: string) => void;
@@ -61,6 +62,12 @@ export const useStore = create<AppState>((set, get) => ({
     removeTask: (id) => set((state) => ({
         tasks: state.tasks.filter(t => t.id !== id),
         selectedTaskId: state.selectedTaskId === id ? null : state.selectedTaskId
+    })),
+
+    resetTask: (id) => set((state) => ({
+        tasks: state.tasks.map(t =>
+            t.id === id ? { ...t, status: 'ready', progress: 0 } : t
+        )
     })),
 
     updateTask: (id, updates) => set((state) => ({

@@ -1,6 +1,6 @@
 import { useStore, FileTask } from '../../store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, CircleDashed, Loader2, Trash2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, CircleDashed, Loader2, Trash2, AlertCircle, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -57,16 +57,31 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
                     </span>
                 </div>
 
-                {/* Remove Button (Shows on Hover) */}
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        removeTask(task.id);
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-danger/20 hover:text-danger text-foreground-muted transition-all duration-200"
-                >
-                    <Trash2 size={14} />
-                </button>
+                {/* Actions (Shows on Hover) */}
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                    {(task.status === 'done' || task.status === 'error') && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                useStore.getState().resetTask(task.id);
+                            }}
+                            className="p-2 rounded-lg hover:bg-primary/20 hover:text-primary text-foreground-muted transition-all duration-200"
+                            title="Reset Task"
+                        >
+                            <RotateCcw size={14} />
+                        </button>
+                    )}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            removeTask(task.id);
+                        }}
+                        className="p-2 rounded-lg hover:bg-danger/20 hover:text-danger text-foreground-muted transition-all duration-200"
+                        title="Remove Task"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                </div>
             </div>
 
             {/* Premium Progress Bar */}
