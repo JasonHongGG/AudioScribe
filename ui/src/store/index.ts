@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { api } from '../services/api';
 
 export type AudioSegment = {
     id: string;
@@ -73,8 +74,46 @@ export const useStore = create<AppState>((set, get) => ({
     setActiveTool: (tool) => set({ activeToolRef: tool }),
 
     startBatchTranscription: async () => {
-        // Placeholder for batch transcription logic
-        console.log("Starting batch transcription with provider:", get().globalProvider);
-        // Real implementation will likely involve iterating through tasks and sending IPC calls to Tauri backend
+        const state = get();
+        const pendingTasks = state.tasks.filter(t => t.status === 'ready');
+
+        if (pendingTasks.length === 0) return;
+
+        // Using sequential processing to avoid overwhelming backend/system resources
+        for (const task of pendingTasks) {
+            // Update to extracting/transcribing
+            set((state) => ({
+                tasks: state.tasks.map(t =>
+                    t.id === task.id ? { ...t, status: 'transcribing' } : t
+                )
+            }));
+
+            try {
+                const response = await api.transcribeFile(
+                    task.file_path!,
+                    task.provider,
+                    task.modelSize,
+                    task.trimRange,
+                    task.segments
+                );
+
+                // Update based on outcome
+                set((state) => ({
+                    tasks: state.tasks.map(t =>
+                        t.id === task.id ? {
+                            ...t,
+                            status: response.status === 'success' ? 'done' : 'error',
+                            progress: response.status === 'success' ? 100 : t.progress
+                        } : t
+                    )
+                }));
+            } catch (err) {
+                set((state) => ({
+                    tasks: state.tasks.map(t =>
+                        t.id === task.id ? { ...t, status: 'error' } : t
+                    )
+                }));
+            }
+        }
     }
 }));

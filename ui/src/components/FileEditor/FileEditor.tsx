@@ -215,13 +215,9 @@ export function FileEditor({ taskId }: { taskId: string }) {
             const ws = wavesurferRef.current;
             if (!ws) return;
 
-            console.log('[WHEEL] fired', { deltaX: e.deltaX, deltaY: e.deltaY, target: (e.target as HTMLElement).className });
-
             // Need to use classList check because composedPath handles shadow DOMs better
             const path = e.composedPath() as HTMLElement[];
             const isTimelineHover = path.some(node => node.classList && node.classList.contains('timeline-container'));
-
-            console.log('[WHEEL] isTimelineHover:', isTimelineHover);
 
             // Prevent browser's default scrolling behavior (requires passive: false)
             e.preventDefault();
