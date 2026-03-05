@@ -153,13 +153,32 @@ export function FileEditor({ taskId }: { taskId: string }) {
             }
         });
 
-        ws.on('audioprocess', () => setCurrentTime(ws.getCurrentTime()));
+        let isUpdatingTime = false;
+        ws.on('audioprocess', () => {
+            if (!isUpdatingTime) {
+                isUpdatingTime = true;
+                requestAnimationFrame(() => {
+                    setCurrentTime(ws.getCurrentTime());
+                    isUpdatingTime = false;
+                });
+            }
+        });
+
         ws.on('seeking', () => setCurrentTime(ws.getCurrentTime()));
         ws.on('play', () => setIsPlaying(true));
         ws.on('pause', () => setIsPlaying(false));
+
+        let isUpdatingScroll = false;
         ws.on('scroll', (_visibleStart, _visibleEnd, scrollLeft) => {
-            setScrollOffset(scrollLeft);
+            if (!isUpdatingScroll) {
+                isUpdatingScroll = true;
+                requestAnimationFrame(() => {
+                    setScrollOffset(scrollLeft);
+                    isUpdatingScroll = false;
+                });
+            }
         });
+
         // Update scroll position when zooming
         ws.on('zoom', () => {
             setScrollOffset(ws.getScroll());
