@@ -70,8 +70,8 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
         const ws = WaveSurfer.create({
             container: containerRef.current,
-            waveColor: 'rgba(255, 255, 255, 0.35)', // High contrast unplayed waveform
-            progressColor: 'rgba(250, 204, 21, 1)', // Solid bright yellow for played
+            waveColor: '#5b5b5d', // Mathematically equivalent to rgba(255, 255, 255, 0.35) on the dark background, but SOLID so progressColor doesn't muddy
+            progressColor: 'rgba(250, 204, 21, 1)', // Bright yellow for played
             cursorColor: 'transparent', // Custom cursor handles playhead
             cursorWidth: 0,
             barWidth: 3,
@@ -582,7 +582,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
                                                 {/* Trim Start Handle */}
                                                 <div
-                                                    className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex items-center justify-center group/handle"
+                                                    className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex flex-col items-center justify-center group/handle"
                                                     style={{ left: `${trimStartPx}px`, transform: 'translateX(-50%)', width: '24px' }}
                                                     onMouseDown={(e) => {
                                                         e.stopPropagation();
@@ -592,16 +592,21 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                     }}
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
+                                                    {/* Top Bracket */}
+                                                    <div className="w-4 h-4 border-t-2 border-l-2 border-primary rounded-tl-md transition-all duration-300 group-hover/handle:w-6 group-hover/handle:-translate-x-1" />
+                                                    {/* Connecting Line */}
                                                     <motion.div
-                                                        className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_20px_rgba(250,204,21,1)]"
-                                                        whileHover={{ width: 8, height: "70%" }}
+                                                        className="w-[2px] flex-1 bg-primary shadow-[0_0_15px_rgba(250,204,21,0.8)]"
+                                                        whileHover={{ width: 4, opacity: 1 }}
                                                         transition={{ type: "spring", stiffness: 400, damping: 25 }}
                                                     />
+                                                    {/* Bottom Bracket */}
+                                                    <div className="w-4 h-4 border-b-2 border-l-2 border-primary rounded-bl-md transition-all duration-300 group-hover/handle:w-6 group-hover/handle:-translate-x-1" />
                                                 </div>
 
                                                 {/* Trim End Handle */}
                                                 <div
-                                                    className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex items-center justify-center group/handle"
+                                                    className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex flex-col items-center justify-center group/handle"
                                                     style={{ left: `${trimEndPx}px`, transform: 'translateX(-50%)', width: '24px' }}
                                                     onMouseDown={(e) => {
                                                         e.stopPropagation();
@@ -611,11 +616,16 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                                     }}
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
+                                                    {/* Top Bracket */}
+                                                    <div className="w-4 h-4 border-t-2 border-r-2 border-primary rounded-tr-md transition-all duration-300 group-hover/handle:w-6 group-hover/handle:translate-x-1" />
+                                                    {/* Connecting Line */}
                                                     <motion.div
-                                                        className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_20px_rgba(250,204,21,1)]"
-                                                        whileHover={{ width: 8, height: "70%" }}
+                                                        className="w-[2px] flex-1 bg-primary shadow-[0_0_15px_rgba(250,204,21,0.8)]"
+                                                        whileHover={{ width: 4, opacity: 1 }}
                                                         transition={{ type: "spring", stiffness: 400, damping: 25 }}
                                                     />
+                                                    {/* Bottom Bracket */}
+                                                    <div className="w-4 h-4 border-b-2 border-r-2 border-primary rounded-br-md transition-all duration-300 group-hover/handle:w-6 group-hover/handle:translate-x-1" />
                                                 </div>
 
                                                 {/* Segments */}
