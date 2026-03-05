@@ -6,6 +6,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Tooltip } from '../ui/Tooltip';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -38,6 +39,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
     const [zoom, setZoom] = useState(50); // pixels per second
     const [minZoom, setMinZoom] = useState(1);
     const [scrollOffset, setScrollOffset] = useState(0); // For syncing custom overlays
+    const [volHovered, setVolHovered] = useState(false);
 
     const MAX_ZOOM = 180; // finest visible precision remains at second-level timeline ticks
 
@@ -68,8 +70,8 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
         const ws = WaveSurfer.create({
             container: containerRef.current,
-            waveColor: 'rgba(250, 204, 21, 0.25)', // Smooth ambient yellow
-            progressColor: 'rgba(250, 204, 21, 0.9)', // Solid bright yellow
+            waveColor: 'rgba(255, 255, 255, 0.35)', // High contrast unplayed waveform
+            progressColor: 'rgba(250, 204, 21, 1)', // Solid bright yellow for played
             cursorColor: 'transparent', // Custom cursor handles playhead
             cursorWidth: 0,
             barWidth: 3,
@@ -478,7 +480,7 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
     return (
         <motion.div
-            className="flex-1 flex flex-col h-full relative min-w-0 min-h-0 overflow-hidden bg-transparent"
+            className="flex-1 flex flex-col h-full relative min-w-0 min-h-0 bg-transparent"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
@@ -495,9 +497,11 @@ export function FileEditor({ taskId }: { taskId: string }) {
                         className="w-1.5 h-8 bg-primary rounded-full shadow-[0_0_15px_rgba(250,204,21,0.8)]"
                         whileHover={{ scaleY: 1.2, filter: "brightness(1.2)" }}
                     />
-                    <h3 className="text-2xl font-black tracking-tight text-white/90 truncate min-w-0 pr-4 group-hover:text-white transition-colors duration-300 drop-shadow-[0_2px_10px_rgba(255,255,255,0.1)]" title={task.name}>
-                        {task.name}
-                    </h3>
+                    <Tooltip content={task.name} side="top" delay={0.2} className="min-w-0 overflow-hidden">
+                        <h3 className="text-2xl font-black tracking-tight text-white/90 truncate group-hover:text-white transition-colors duration-300 drop-shadow-[0_2px_10px_rgba(255,255,255,0.1)]">
+                            {task.name}
+                        </h3>
+                    </Tooltip>
                 </div>
 
                 {/* Animated Segmented Control */}
@@ -536,233 +540,238 @@ export function FileEditor({ taskId }: { taskId: string }) {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
             >
-                <div ref={glassCardRef} className="w-full h-full relative rounded-[2.5rem] border border-white/[0.04] overflow-hidden glass-card group/canvas flex flex-col shadow-[0_20px_80px_rgba(0,0,0,0.8)] bg-gradient-to-b from-white/[0.02] to-transparent backdrop-blur-3xl">
-                    {/* Inner Edge Highlight */}
-                    <div className="absolute inset-0 rounded-[2.5rem] border border-white/[0.08] pointer-events-none mix-blend-overlay z-10" />
+                <div className="w-full h-full relative">
+                    <div ref={glassCardRef} className="absolute inset-0 rounded-[2.5rem] border border-white/[0.04] overflow-hidden glass-card group/canvas flex flex-col shadow-[0_20px_80px_rgba(0,0,0,0.8)] bg-gradient-to-b from-white/[0.02] to-transparent backdrop-blur-3xl">
+                        {/* Inner Edge Highlight */}
+                        <div className="absolute inset-0 rounded-[2.5rem] border border-white/[0.08] pointer-events-none mix-blend-overlay z-10" />
 
-                    {/* Main Waveform Container */}
-                    <div
-                        className="w-full flex-1 cursor-crosshair relative overflow-hidden flex items-center"
-                        onClick={handleWaveformClick}
-                        onContextMenu={handleContextMenu}
-                    >
-                        <div ref={containerRef} className="w-full" />
-                        {/* Custom React Overlay for Regions */}
-                        {task?.segments && duration > 0 && wavesurferRef.current && wavesurferRef.current.getWrapper() && (
-                            <div
-                                className="absolute inset-0 z-30 pointer-events-none"
-                            >
-                                {(() => {
-                                    const { totalWidth, viewportWidth } = getTimelineMetrics();
-                                    const activeTrim = task.trimRange ?? { start: 0, end: duration };
-                                    const trimStartRawPx = (activeTrim.start / duration) * totalWidth;
-                                    const trimEndRawPx = (activeTrim.end / duration) * totalWidth;
-                                    const trimStartPx = trimStartRawPx - scrollOffset;
-                                    const trimEndPx = trimEndRawPx - scrollOffset;
-                                    const visibleSegments = task.segments
-                                        .map((seg, originalIndex) => ({ seg, originalIndex }))
-                                        .filter(({ seg }) => seg.end > activeTrim.start && seg.start < activeTrim.end);
+                        {/* Main Waveform Container */}
+                        <div
+                            className="w-full flex-1 cursor-crosshair relative overflow-hidden flex items-center"
+                            onClick={handleWaveformClick}
+                            onContextMenu={handleContextMenu}
+                        >
+                            <div ref={containerRef} className="w-full" />
+                            {/* Custom React Overlay for Regions */}
+                            {task?.segments && duration > 0 && wavesurferRef.current && wavesurferRef.current.getWrapper() && (
+                                <div
+                                    className="absolute inset-0 z-30 pointer-events-none"
+                                >
+                                    {(() => {
+                                        const { totalWidth, viewportWidth } = getTimelineMetrics();
+                                        const activeTrim = task.trimRange ?? { start: 0, end: duration };
+                                        const trimStartRawPx = (activeTrim.start / duration) * totalWidth;
+                                        const trimEndRawPx = (activeTrim.end / duration) * totalWidth;
+                                        const trimStartPx = trimStartRawPx - scrollOffset;
+                                        const trimEndPx = trimEndRawPx - scrollOffset;
+                                        const visibleSegments = task.segments
+                                            .map((seg, originalIndex) => ({ seg, originalIndex }))
+                                            .filter(({ seg }) => seg.end > activeTrim.start && seg.start < activeTrim.end);
 
-                                    return (
-                                        <>
-                                            {/* Trim Out of Bounds Areas */}
-                                            <div
-                                                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px] transition-all duration-300"
-                                                style={{ left: 0, width: `${Math.max(0, trimStartPx)}px` }}
-                                            />
-                                            <div
-                                                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px] transition-all duration-300"
-                                                style={{ left: `${trimEndPx}px`, width: `${Math.max(0, viewportWidth - trimEndPx)}px` }}
-                                            />
-
-                                            {/* Trim Start Handle */}
-                                            <div
-                                                className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex items-center justify-center group/handle"
-                                                style={{ left: `${trimStartPx}px`, transform: 'translateX(-50%)', width: '24px' }}
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    e.preventDefault();
-                                                    setDraggingBoundary({ kind: 'trim-start' });
-                                                    setDragTooltip({ time: activeTrim.start, leftPx: trimStartRawPx });
-                                                }}
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <motion.div
-                                                    className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_20px_rgba(250,204,21,1)]"
-                                                    whileHover={{ width: 8, height: "70%" }}
-                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                                                />
-                                            </div>
-
-                                            {/* Trim End Handle */}
-                                            <div
-                                                className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex items-center justify-center group/handle"
-                                                style={{ left: `${trimEndPx}px`, transform: 'translateX(-50%)', width: '24px' }}
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    e.preventDefault();
-                                                    setDraggingBoundary({ kind: 'trim-end' });
-                                                    setDragTooltip({ time: activeTrim.end, leftPx: trimEndRawPx });
-                                                }}
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <motion.div
-                                                    className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_20px_rgba(250,204,21,1)]"
-                                                    whileHover={{ width: 8, height: "70%" }}
-                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                                                />
-                                            </div>
-
-                                            {/* Segments */}
-                                            {visibleSegments.map(({ seg, originalIndex }, i) => {
-                                                const renderStart = Math.max(seg.start, activeTrim.start);
-                                                const renderEnd = Math.min(seg.end, activeTrim.end);
-                                                const leftPx = (renderStart / duration) * totalWidth - scrollOffset;
-                                                const widthPx = ((renderEnd - renderStart) / duration) * totalWidth;
-
-                                                const isFirst = i === 0;
-                                                const isLast = i === visibleSegments.length - 1;
-
-                                                return (
-                                                    <div
-                                                        key={seg.id}
-                                                        className="absolute top-0 bottom-0 pointer-events-auto group/seg transition-colors duration-300"
-                                                        style={{
-                                                            left: `${leftPx}px`,
-                                                            width: `${widthPx}px`,
-                                                            backgroundColor: seg.included ? 'transparent' : 'rgba(15, 15, 19, 0.75)',
-                                                            backdropFilter: seg.included ? 'none' : 'blur(8px)',
-                                                        }}
-                                                    >
-                                                        {/* Segment Hover Outline */}
-                                                        <div className="absolute inset-0 border-[1.5px] border-white/0 group-hover/seg:border-white/10 transition-colors duration-300 pointer-events-none rounded-sm" />
-
-                                                        {/* Left Boundary Handle (Split) */}
-                                                        {!isFirst && (
-                                                            <div
-                                                                className="absolute top-0 bottom-0 -left-[12px] w-[24px] z-20 flex items-center justify-center cursor-col-resize pointer-events-auto group/split"
-                                                                onMouseDown={(e) => {
-                                                                    e.stopPropagation();
-                                                                    e.preventDefault();
-                                                                    const boundaryTime = visibleSegments[i - 1].seg.end;
-                                                                    const tooltipLeftPx = (boundaryTime / duration) * totalWidth;
-                                                                    setDraggingBoundary({ kind: 'segment', index: visibleSegments[i - 1].originalIndex });
-                                                                    setDragTooltip({ time: boundaryTime, leftPx: tooltipLeftPx });
-                                                                }}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                <motion.div
-                                                                    className="w-[2px] h-[80%] bg-white/40 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)]"
-                                                                    whileHover={{ width: 5, backgroundColor: "#fff", height: "80%", boxShadow: "0 0 15px rgba(255,255,255,0.8)" }}
-                                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                                                                />
-                                                            </div>
-                                                        )}
-
-                                                        {/* Right Boundary Handle (Split) */}
-                                                        {!isLast && (
-                                                            <div
-                                                                className="absolute top-0 bottom-0 -right-[12px] w-[24px] z-20 flex items-center justify-center cursor-col-resize pointer-events-auto group/split"
-                                                                onMouseDown={(e) => {
-                                                                    e.stopPropagation();
-                                                                    e.preventDefault();
-                                                                    const boundaryTime = seg.end;
-                                                                    const tooltipLeftPx = (boundaryTime / duration) * totalWidth;
-                                                                    setDraggingBoundary({ kind: 'segment', index: originalIndex });
-                                                                    setDragTooltip({ time: boundaryTime, leftPx: tooltipLeftPx });
-                                                                }}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                <motion.div
-                                                                    className="w-[2px] h-[80%] bg-white/40 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)]"
-                                                                    whileHover={{ width: 5, backgroundColor: "#fff", height: "80%", boxShadow: "0 0 15px rgba(255,255,255,0.8)" }}
-                                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                                                                />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )
-                                            })}
-                                        </>
-                                    );
-                                })()}
-
-                                <AnimatePresence>
-                                    {dragTooltip && draggingBoundary !== null && (
-                                        <motion.div
-                                            className="absolute top-6 z-40 pointer-events-none"
-                                            style={{
-                                                left: `${dragTooltip.leftPx - scrollOffset}px`,
-                                                transform: 'translateX(-50%)',
-                                            }}
-                                            initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                        >
-                                            <div className="rounded-xl border border-white/20 bg-background-base/95 px-4 py-2 text-sm font-mono font-bold tracking-wider text-primary shadow-[0_15px_30px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
-                                                {formatTime(dragTooltip.time)}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Timeline Container */}
-                    <div
-                        className="timeline-container w-full h-10 absolute bottom-0 left-0 bg-background-base/50 backdrop-blur-2xl border-t border-white/[0.04] cursor-ew-resize overflow-hidden z-40"
-                    >
-                        {(() => {
-                            const { viewportWidth, totalWidth } = getTimelineMetrics();
-                            if (!duration || totalWidth <= 0 || viewportWidth <= 0) return null;
-
-                            const pxPerSec = totalWidth / duration;
-                            const stepSec = pickTimelineStep(pxPerSec);
-                            const visibleStart = (scrollOffset / totalWidth) * duration;
-                            const visibleEnd = ((scrollOffset + viewportWidth) / totalWidth) * duration;
-
-                            const startTick = Math.floor(visibleStart / stepSec) * stepSec;
-                            const ticks: number[] = [];
-                            for (let tick = startTick; tick <= visibleEnd + stepSec; tick += stepSec) {
-                                if (tick >= 0 && tick <= duration) {
-                                    ticks.push(tick);
-                                }
-                            }
-
-                            return (
-                                <>
-                                    {ticks.map((tick) => {
-                                        const x = (tick / duration) * totalWidth - scrollOffset;
                                         return (
-                                            <div
-                                                key={tick}
-                                                className="absolute bottom-0 h-full flex flex-col justify-end pb-1.5"
-                                                style={{ left: `${x}px`, transform: 'translateX(-0.5px)' }}
-                                            >
-                                                <div className="w-px h-2.5 bg-white/30 mx-auto" />
-                                                <div className="text-[10px] uppercase font-mono tracking-widest leading-none text-foreground-muted/70 mt-1.5 -translate-x-1/2 whitespace-nowrap">
-                                                    {stepSec >= 1
-                                                        ? formatTime(tick).split('.')[0]
-                                                        : formatTime(tick)
-                                                    }
+                                            <>
+                                                {/* Trim Out of Bounds Areas */}
+                                                <div
+                                                    className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px] transition-all duration-300"
+                                                    style={{ left: 0, width: `${Math.max(0, trimStartPx)}px` }}
+                                                />
+                                                <div
+                                                    className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px] transition-all duration-300"
+                                                    style={{ left: `${trimEndPx}px`, width: `${Math.max(0, viewportWidth - trimEndPx)}px` }}
+                                                />
+
+                                                {/* Trim Start Handle */}
+                                                <div
+                                                    className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex items-center justify-center group/handle"
+                                                    style={{ left: `${trimStartPx}px`, transform: 'translateX(-50%)', width: '24px' }}
+                                                    onMouseDown={(e) => {
+                                                        e.stopPropagation();
+                                                        e.preventDefault();
+                                                        setDraggingBoundary({ kind: 'trim-start' });
+                                                        setDragTooltip({ time: activeTrim.start, leftPx: trimStartRawPx });
+                                                    }}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <motion.div
+                                                        className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_20px_rgba(250,204,21,1)]"
+                                                        whileHover={{ width: 8, height: "70%" }}
+                                                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                    />
                                                 </div>
-                                            </div>
+
+                                                {/* Trim End Handle */}
+                                                <div
+                                                    className="absolute top-0 bottom-0 z-30 cursor-col-resize pointer-events-auto flex items-center justify-center group/handle"
+                                                    style={{ left: `${trimEndPx}px`, transform: 'translateX(-50%)', width: '24px' }}
+                                                    onMouseDown={(e) => {
+                                                        e.stopPropagation();
+                                                        e.preventDefault();
+                                                        setDraggingBoundary({ kind: 'trim-end' });
+                                                        setDragTooltip({ time: activeTrim.end, leftPx: trimEndRawPx });
+                                                    }}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <motion.div
+                                                        className="w-[4px] h-[60%] bg-primary rounded-full shadow-[0_0_20px_rgba(250,204,21,1)]"
+                                                        whileHover={{ width: 8, height: "70%" }}
+                                                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                    />
+                                                </div>
+
+                                                {/* Segments */}
+                                                {visibleSegments.map(({ seg, originalIndex }, i) => {
+                                                    const renderStart = Math.max(seg.start, activeTrim.start);
+                                                    const renderEnd = Math.min(seg.end, activeTrim.end);
+                                                    const leftPx = (renderStart / duration) * totalWidth - scrollOffset;
+                                                    const widthPx = ((renderEnd - renderStart) / duration) * totalWidth;
+
+                                                    const isFirst = i === 0;
+                                                    const isLast = i === visibleSegments.length - 1;
+
+                                                    return (
+                                                        <div
+                                                            key={seg.id}
+                                                            className="absolute top-0 bottom-0 pointer-events-auto group/seg transition-colors duration-300"
+                                                            style={{
+                                                                left: `${leftPx}px`,
+                                                                width: `${widthPx}px`,
+                                                                backgroundColor: seg.included ? 'transparent' : 'rgba(15, 15, 19, 0.75)',
+                                                                backdropFilter: seg.included ? 'none' : 'blur(8px)',
+                                                            }}
+                                                        >
+                                                            {/* Segment Hover Outline */}
+                                                            <div className="absolute inset-0 border-[1.5px] border-white/0 group-hover/seg:border-white/10 transition-colors duration-300 pointer-events-none rounded-sm" />
+
+                                                            {/* Left Boundary Handle (Split) */}
+                                                            {!isFirst && (
+                                                                <div
+                                                                    className="absolute top-0 bottom-0 -left-[12px] w-[24px] z-20 flex items-center justify-center cursor-col-resize pointer-events-auto group/split"
+                                                                    onMouseDown={(e) => {
+                                                                        e.stopPropagation();
+                                                                        e.preventDefault();
+                                                                        const boundaryTime = visibleSegments[i - 1].seg.end;
+                                                                        const tooltipLeftPx = (boundaryTime / duration) * totalWidth;
+                                                                        setDraggingBoundary({ kind: 'segment', index: visibleSegments[i - 1].originalIndex });
+                                                                        setDragTooltip({ time: boundaryTime, leftPx: tooltipLeftPx });
+                                                                    }}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <motion.div
+                                                                        className="w-[2px] h-[80%] bg-white/40 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+                                                                        whileHover={{ width: 5, backgroundColor: "#fff", height: "80%", boxShadow: "0 0 15px rgba(255,255,255,0.8)" }}
+                                                                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                                    />
+                                                                </div>
+                                                            )}
+
+                                                            {/* Right Boundary Handle (Split) */}
+                                                            {!isLast && (
+                                                                <div
+                                                                    className="absolute top-0 bottom-0 -right-[12px] w-[24px] z-20 flex items-center justify-center cursor-col-resize pointer-events-auto group/split"
+                                                                    onMouseDown={(e) => {
+                                                                        e.stopPropagation();
+                                                                        e.preventDefault();
+                                                                        const boundaryTime = seg.end;
+                                                                        const tooltipLeftPx = (boundaryTime / duration) * totalWidth;
+                                                                        setDraggingBoundary({ kind: 'segment', index: originalIndex });
+                                                                        setDragTooltip({ time: boundaryTime, leftPx: tooltipLeftPx });
+                                                                    }}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <motion.div
+                                                                        className="w-[2px] h-[80%] bg-white/40 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+                                                                        whileHover={{ width: 5, backgroundColor: "#fff", height: "80%", boxShadow: "0 0 15px rgba(255,255,255,0.8)" }}
+                                                                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )
+                                                })}
+                                            </>
                                         );
-                                    })}
-                                </>
-                            );
-                        })()}
+                                    })()}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Timeline Container */}
+                        <div
+                            className="timeline-container w-full h-10 absolute bottom-0 left-0 bg-background-base/50 backdrop-blur-2xl border-t border-white/[0.04] cursor-ew-resize overflow-hidden z-40"
+                        >
+                            {(() => {
+                                const { viewportWidth, totalWidth } = getTimelineMetrics();
+                                if (!duration || totalWidth <= 0 || viewportWidth <= 0) return null;
+
+                                const pxPerSec = totalWidth / duration;
+                                const stepSec = pickTimelineStep(pxPerSec);
+                                const visibleStart = (scrollOffset / totalWidth) * duration;
+                                const visibleEnd = ((scrollOffset + viewportWidth) / totalWidth) * duration;
+
+                                const startTick = Math.floor(visibleStart / stepSec) * stepSec;
+                                const ticks: number[] = [];
+                                for (let tick = startTick; tick <= visibleEnd + stepSec; tick += stepSec) {
+                                    if (tick >= 0 && tick <= duration) {
+                                        ticks.push(tick);
+                                    }
+                                }
+
+                                return (
+                                    <>
+                                        {ticks.map((tick) => {
+                                            const x = (tick / duration) * totalWidth - scrollOffset;
+                                            return (
+                                                <div
+                                                    key={tick}
+                                                    className="absolute bottom-0 h-full flex flex-col justify-end pb-1.5"
+                                                    style={{ left: `${x}px`, transform: 'translateX(-0.5px)' }}
+                                                >
+                                                    <div className="w-px h-2.5 bg-white/30 mx-auto" />
+                                                    <div className="text-[10px] uppercase font-mono tracking-widest leading-none text-foreground-muted/70 mt-1.5 -translate-x-1/2 whitespace-nowrap">
+                                                        {stepSec >= 1
+                                                            ? formatTime(tick).split('.')[0]
+                                                            : formatTime(tick)
+                                                        }
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                );
+                            })()}
+                        </div>
+
+                        {/* Center Playhead Overlay (Visual Only) - Throbbing Neon Outline */}
+                        <div className="absolute top-0 bottom-0 left-1/2 w-[2px] bg-primary/80 pointer-events-none z-40 shadow-[0_0_20px_rgba(250,204,21,1)] flex items-center justify-center mix-blend-screen">
+                            <motion.div
+                                className="w-3 h-3 rounded-full bg-primary shadow-[0_0_15px_rgba(250,204,21,1)]"
+                                animate={{ scale: isPlaying ? [1, 1.4, 1] : 1, opacity: isPlaying ? [0.8, 1, 0.8] : 1 }}
+                                transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                            />
+                        </div>
                     </div>
 
-                    {/* Center Playhead Overlay (Visual Only) - Throbbing Neon Outline */}
-                    <div className="absolute top-0 bottom-0 left-1/2 w-[2px] bg-primary/80 pointer-events-none z-40 shadow-[0_0_20px_rgba(250,204,21,1)] flex items-center justify-center mix-blend-screen">
-                        <motion.div
-                            className="w-3 h-3 rounded-full bg-primary shadow-[0_0_15px_rgba(250,204,21,1)]"
-                            animate={{ scale: isPlaying ? [1, 1.4, 1] : 1, opacity: isPlaying ? [0.8, 1, 0.8] : 1 }}
-                            transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-                        />
+                    {/* Unclipped Overlay Area */}
+                    <div className="absolute inset-0 pointer-events-none z-[60]">
+                        <AnimatePresence>
+                            {dragTooltip && draggingBoundary !== null && (
+                                <motion.div
+                                    className="absolute pointer-events-none z-[100]"
+                                    style={{
+                                        top: '0px',
+                                        left: `${dragTooltip.leftPx - scrollOffset}px`,
+                                    }}
+                                    initial={{ opacity: 0, y: -10, x: "-50%", scale: 0.9 }}
+                                    animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+                                    exit={{ opacity: 0, y: -10, x: "-50%", scale: 0.9 }}
+                                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                >
+                                    <div className="rounded-xl border border-white/20 bg-background-base/95 px-3 py-1.5 text-[11px] font-mono font-bold tracking-wider text-primary shadow-[0_15px_30px_rgba(0,0,0,0.8)] backdrop-blur-2xl max-w-full min-w-0">
+                                        {formatTime(dragTooltip.time)}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
                 </div>
             </motion.div>
@@ -880,7 +889,11 @@ export function FileEditor({ taskId }: { taskId: string }) {
 
                     {/* Right: Volume */}
                     <div className="w-[180px] flex items-center gap-4 justify-end">
-                        <div className="group/vol relative h-5 flex items-center w-28 cursor-pointer">
+                        <div
+                            className="group/vol relative h-5 flex items-center w-28 cursor-pointer"
+                            onMouseEnter={() => setVolHovered(true)}
+                            onMouseLeave={() => setVolHovered(false)}
+                        >
                             <input
                                 type="range"
                                 min={0}
@@ -900,10 +913,16 @@ export function FileEditor({ taskId }: { taskId: string }) {
                                     style={{ width: `${volume * 100}%` }}
                                 />
                             </div>
-                            <div
-                                className="absolute h-3 w-3 bg-white rounded-full shadow-md pointer-events-none"
+                            <Tooltip
+                                content={`${Math.round(volume * 100)}%`}
+                                side="top"
+                                className="absolute h-3 w-3 pointer-events-none"
                                 style={{ left: `calc(${volume * 100}% - 6px)` }}
-                            />
+                                offset={12}
+                                isOpen={volHovered}
+                            >
+                                <div className="w-full h-full bg-white rounded-full shadow-md" />
+                            </Tooltip>
                         </div>
                         <div className="text-foreground-muted/80 shrink-0 w-5 flex justify-center">
                             <Volume2 size={18} className="text-white/80" />
