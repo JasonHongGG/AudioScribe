@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
 
     @app.post("/extract-audio")
     async def extract_audio(req: ExtractAudioRequest) -> dict:
+        import asyncio
         from audioscribe.utils.ffmpeg import is_video_file, extract_audio_to_mp3
 
         source = Path(req.file_path)
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
             return {"status": "success", "audio_path": str(source)}
 
         audio_dir = BASE_DIR.parent / "audio" / "tmp"
+        print(f"audio_dir: {audio_dir}")
         audio_dir.mkdir(parents=True, exist_ok=True)
         output_mp3 = audio_dir / f"{source.stem}.mp3"
 
@@ -70,9 +72,10 @@ def create_app() -> FastAPI:
             log_bus.write(f"[API] Using cached audio: {output_mp3.name}")
             return {"status": "success", "audio_path": str(output_mp3)}
 
-        log_bus.write(f"[API] Extracting audio from video: {source.name}")
+        log_bus.write(f"[API] Extracting audio from video: {source.name} (this may take a while...)")
         try:
-            extract_audio_to_mp3(source, output_mp3)
+            # Run FFmpeg in a thread pool to avoid blocking the event loop
+            await asyncio.to_thread(extract_audio_to_mp3, source, output_mp3)
             log_bus.write(f"[API] Audio extracted: {output_mp3.name}")
             return {"status": "success", "audio_path": str(output_mp3)}
         except Exception as exc:

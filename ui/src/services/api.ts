@@ -168,6 +168,8 @@ export const api = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ file_path: filePath }),
+                // FFmpeg conversion of large videos can take several minutes
+                signal: AbortSignal.timeout(30 * 60 * 1000),
             });
 
             if (!response.ok) {
