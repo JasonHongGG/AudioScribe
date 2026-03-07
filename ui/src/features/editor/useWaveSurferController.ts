@@ -188,7 +188,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         return () => {
             ws.destroy();
         };
-    }, [task?.id, task?.media.playbackPath, task?.media.extractionPath, task?.source.path, task?.source.kind, task?.editor.segments, task?.editor.trimRange, updateTask]);
+    }, [task?.id, task?.media.playbackPath, task?.media.extractionPath, task?.source.path, task?.source.kind, updateTask]);
 
     useEffect(() => {
         if (!containerRef.current) {
