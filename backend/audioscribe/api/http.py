@@ -42,9 +42,42 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    class ExtractAudioRequest(BaseModel):
+        file_path: str
+
     @app.get("/health")
     def health_check() -> dict:
         return {"status": "ok", "message": "AudioScribe AI Engine is running."}
+
+    @app.post("/extract-audio")
+    async def extract_audio(req: ExtractAudioRequest) -> dict:
+        from audioscribe.utils.ffmpeg import is_video_file, extract_audio_to_mp3
+
+        source = Path(req.file_path)
+        if not source.exists():
+            return {"status": "error", "error": f"File not found: {req.file_path}"}
+
+        if not is_video_file(source):
+            # Not a video — no extraction needed, return original path
+            return {"status": "success", "audio_path": str(source)}
+
+        audio_dir = BASE_DIR.parent / "audio" / "tmp"
+        audio_dir.mkdir(parents=True, exist_ok=True)
+        output_mp3 = audio_dir / f"{source.stem}.mp3"
+
+        # Skip if already extracted and source hasn't changed
+        if output_mp3.exists() and output_mp3.stat().st_mtime >= source.stat().st_mtime:
+            log_bus.write(f"[API] Using cached audio: {output_mp3.name}")
+            return {"status": "success", "audio_path": str(output_mp3)}
+
+        log_bus.write(f"[API] Extracting audio from video: {source.name}")
+        try:
+            extract_audio_to_mp3(source, output_mp3)
+            log_bus.write(f"[API] Audio extracted: {output_mp3.name}")
+            return {"status": "success", "audio_path": str(output_mp3)}
+        except Exception as exc:
+            log_bus.write(f"[API] Audio extraction failed: {exc}")
+            return {"status": "error", "error": str(exc)}
 
     @app.get("/stream-logs")
     async def stream_logs() -> StreamingResponse:

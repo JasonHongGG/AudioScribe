@@ -156,5 +156,31 @@ export const api = {
                 error: error instanceof Error ? error.message : String(error)
             };
         }
-    }
+    },
+
+    /**
+     * Extract audio from a video file (mp4, mkv, etc.) via FFmpeg on backend.
+     * Returns the path to the extracted MP3 file.
+     */
+    async extractAudio(filePath: string): Promise<{ status: 'success' | 'error'; audio_path?: string; error?: string }> {
+        try {
+            const response = await fetch(`${API_BASE_URL}/extract-audio`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: filePath }),
+            });
+
+            if (!response.ok) {
+                return { status: 'error', error: `HTTP Error: ${response.status}` };
+            }
+
+            return await response.json() as { status: 'success' | 'error'; audio_path?: string; error?: string };
+        } catch (error) {
+            console.error("API error during extract-audio request:", error);
+            return {
+                status: 'error',
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    },
 };

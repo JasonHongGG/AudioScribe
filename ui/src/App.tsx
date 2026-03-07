@@ -8,11 +8,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ImportPanel } from './components/ImportPanel/ImportPanel';
+import { api } from './services/api';
+
+const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
+
+function isVideoPath(path: string): boolean {
+  return VIDEO_EXTENSIONS.some(ext => path.toLowerCase().endsWith(ext));
+}
 
 function App() {
   const tasks = useStore(state => state.tasks);
   const selectedTaskId = useStore(state => state.selectedTaskId);
   const addTask = useStore(state => state.addTask);
+  const updateTask = useStore(state => state.updateTask);
 
   const handleFileUpload = async () => {
     try {
@@ -30,12 +38,15 @@ function App() {
 
       filePaths.forEach((path) => {
         const name = path.split(/[/\\]/).pop() || 'Unknown File';
+        const isVideo = isVideoPath(path);
+
         const newTask: FileTask = {
           id: Math.random().toString(36).substring(7),
           name: name,
           file: null,
           file_path: path,
-          status: 'ready',
+          audio_file_path: null,
+          status: isVideo ? 'extracting' : 'ready',
           progress: 0,
           provider: 'faster-whisper',
           modelSize: 'base',
@@ -43,6 +54,21 @@ function App() {
           trimRange: null,
         };
         addTask(newTask);
+
+        // If video, extract audio in background
+        if (isVideo) {
+          api.extractAudio(path).then((result) => {
+            if (result.status === 'success' && result.audio_path) {
+              updateTask(newTask.id, {
+                audio_file_path: result.audio_path,
+                status: 'ready',
+              });
+            } else {
+              console.error('Audio extraction failed:', result.error);
+              updateTask(newTask.id, { status: 'error' });
+            }
+          });
+        }
       });
     } catch (err) {
       console.error("Failed to open file dialog", err);

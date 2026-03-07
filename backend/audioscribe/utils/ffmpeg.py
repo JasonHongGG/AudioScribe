@@ -2,6 +2,28 @@ import json
 import subprocess
 from pathlib import Path
 
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv", ".ts"}
+
+
+def is_video_file(path: Path) -> bool:
+    """Check if a file is a video format that needs audio extraction."""
+    return path.suffix.lower() in VIDEO_EXTENSIONS
+
+
+def extract_audio_to_mp3(input_path: Path, output_path: Path) -> None:
+    """Extract audio track from a video file and save as MP3 (192kbps)."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", str(input_path),
+        "-vn",              # Strip video stream
+        "-acodec", "libmp3lame",
+        "-ab", "192k",
+        str(output_path),
+    ]
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+
 
 def get_audio_duration(audio_path: Path) -> float:
     """Get the duration of an audio file in seconds using ffprobe."""

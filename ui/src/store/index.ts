@@ -17,6 +17,7 @@ export type FileTask = {
     id: string;
     file: File | null;
     file_path: string | null;
+    audio_file_path: string | null;  // Extracted audio path (for video files)
     name: string;
     status: 'ready' | 'extracting' | 'transcribing' | 'done' | 'error';
     progress: number;
