@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pause, Play, Volume2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText, Pause, Play, Volume2 } from 'lucide-react';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { formatTime } from './utils.ts';
 
@@ -13,6 +13,9 @@ interface PlayerDockProps {
     onTogglePlay: () => void;
     onSkip: (seconds: number) => void;
     onVolumeChange: (value: number) => void;
+    transcriptState: 'idle' | 'ready' | 'failed';
+    isTranscriptPanelOpen: boolean;
+    onToggleTranscriptPanel: () => void;
 }
 
 export function PlayerDock({
@@ -24,8 +27,16 @@ export function PlayerDock({
     onTogglePlay,
     onSkip,
     onVolumeChange,
+    transcriptState,
+    isTranscriptPanelOpen,
+    onToggleTranscriptPanel,
 }: PlayerDockProps) {
     const [isVolumeHovered, setIsVolumeHovered] = useState(false);
+    const transcriptLabel = transcriptState === 'ready'
+        ? 'Transcript ready'
+        : transcriptState === 'failed'
+            ? 'Transcript failed'
+            : 'Transcript';
 
     return (
         <motion.div
@@ -73,7 +84,30 @@ export function PlayerDock({
             </div>
 
             <div className="flex items-center justify-between w-full mt-1">
-                <div className="w-[180px] flex items-center" />
+                <div className="w-[180px] flex items-center">
+                    <Tooltip content={transcriptLabel} side="top" delay={0.15}>
+                        <button
+                            onClick={onToggleTranscriptPanel}
+                            className={isTranscriptPanelOpen
+                                ? 'glass-button h-10 w-10 flex items-center justify-center text-primary border-primary/20 shadow-[0_0_18px_rgba(250,204,21,0.12)] transition-colors'
+                                : 'glass-button h-10 w-10 flex items-center justify-center text-foreground-muted hover:text-foreground transition-colors'}
+                            aria-label={transcriptLabel}
+                            aria-pressed={isTranscriptPanelOpen}
+                            title={transcriptLabel}
+                        >
+                            <span className="relative flex items-center justify-center">
+                            <FileText size={14} className={transcriptState === 'ready' ? 'text-primary' : transcriptState === 'failed' ? 'text-danger' : ''} />
+                            {transcriptState !== 'idle' && (
+                                <span className={
+                                    transcriptState === 'ready'
+                                        ? 'absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(250,204,21,0.5)]'
+                                        : 'absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-danger shadow-[0_0_8px_rgba(239,68,68,0.4)]'
+                                } />
+                            )}
+                            </span>
+                        </button>
+                    </Tooltip>
+                </div>
 
                 <div className="flex items-center justify-center gap-4 flex-1 relative z-10">
                     <motion.button
