@@ -34,7 +34,7 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
             exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => selectTask(task.id)}
+            onClick={() => task.status !== 'extracting' && selectTask(task.id)}
             className={cn(
                 "group relative flex flex-col p-3.5 rounded-xl cursor-pointer transition-all duration-300 border overflow-hidden",
                 isSelected

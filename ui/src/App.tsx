@@ -39,9 +39,10 @@ function App() {
       filePaths.forEach((path) => {
         const name = path.split(/[/\\]/).pop() || 'Unknown File';
         const isVideo = isVideoPath(path);
+        const taskId = Math.random().toString(36).substring(7);
 
         const newTask: FileTask = {
-          id: Math.random().toString(36).substring(7),
+          id: taskId,
           name: name,
           file: null,
           file_path: path,
@@ -59,13 +60,13 @@ function App() {
         if (isVideo) {
           api.extractAudio(path).then((result) => {
             if (result.status === 'success' && result.audio_path) {
-              updateTask(newTask.id, {
+              updateTask(taskId, {
                 audio_file_path: result.audio_path,
                 status: 'ready',
               });
             } else {
               console.error('Audio extraction failed:', result.error);
-              updateTask(newTask.id, { status: 'error' });
+              updateTask(taskId, { status: 'error' });
             }
           });
         }

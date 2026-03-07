@@ -96,6 +96,13 @@ export function FileEditor({ taskId }: { taskId: string }) {
                     const url = URL.createObjectURL(task.file);
                     await ws.load(url);
                 } else if (audioPath) {
+                    // Skip loading raw video files — only load audio formats or extracted MP3
+                    const isRawVideo = !task.audio_file_path && task.file_path &&
+                        /\.(mp4|mkv|avi|mov|webm)$/i.test(task.file_path);
+                    if (isRawVideo) {
+                        console.log('Skipping raw video load — waiting for audio extraction');
+                        return;
+                    }
                     // Tauri Absolute Path (may be extracted MP3 for videos)
                     const assetUrl = convertFileSrc(audioPath);
                     await ws.load(assetUrl);
@@ -117,12 +124,6 @@ export function FileEditor({ taskId }: { taskId: string }) {
         ws.on('decode', () => {
             const decodedData = ws.getDecodedData();
             if (decodedData) {
-                // Guard: skip power curve for very large audio to prevent memory exhaustion
-                const totalSamples = decodedData.getChannelData(0).length;
-                if (totalSamples > 50_000_000) {
-                    console.log(`Skipping power curve: ${totalSamples.toLocaleString()} samples exceeds threshold`);
-                    return;
-                }
                 // Apply a power curve to the visual amplitude to increase dynamic range appearance.
                 // Modern audio limits peaks near 1.0, making the waveform look like a solid block.
                 // A power curve makes quiet parts visually quieter without clipping max peaks.
