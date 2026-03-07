@@ -38,11 +38,11 @@ export function EditorWaveformOverlay({
     return (
         <div className="absolute inset-0 z-30 pointer-events-none">
             <div
-                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px] transition-all duration-300"
+                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px]"
                 style={{ left: 0, width: `${Math.max(0, trimStartPx)}px` }}
             />
             <div
-                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px] transition-all duration-300"
+                className="absolute top-0 bottom-0 pointer-events-none bg-background-base/80 backdrop-blur-[6px]"
                 style={{ left: `${trimEndPx}px`, width: `${Math.max(0, viewportWidth - trimEndPx)}px` }}
             />
 
