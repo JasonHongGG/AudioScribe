@@ -4,8 +4,32 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import type { FileTask, TrimRange, AudioSegment } from '../tasks/types';
 
 const MAX_ZOOM = 180;
+const MAX_WAVEFORM_CACHE_ENTRIES = 8;
+
+type WaveformCacheEntry = {
+    peaks: Array<Float32Array | number[]>;
+    duration: number;
+};
 
 type UpdateTask = (id: string, updater: FileTask | ((task: FileTask) => FileTask)) => void;
+
+const waveformCache = new Map<string, WaveformCacheEntry>();
+
+function rememberWaveform(audioPath: string, entry: WaveformCacheEntry) {
+    if (waveformCache.has(audioPath)) {
+        waveformCache.delete(audioPath);
+    }
+
+    waveformCache.set(audioPath, entry);
+
+    while (waveformCache.size > MAX_WAVEFORM_CACHE_ENTRIES) {
+        const oldestKey = waveformCache.keys().next().value;
+        if (!oldestKey) {
+            break;
+        }
+        waveformCache.delete(oldestKey);
+    }
+}
 
 export function useWaveSurferController(task: FileTask | undefined, updateTask: UpdateTask) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -19,7 +43,28 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
     const [zoom, setZoom] = useState(50);
     const [minZoom, setMinZoom] = useState(1);
     const [scrollOffset, setScrollOffset] = useState(0);
+    const [isWaveformLoading, setIsWaveformLoading] = useState(false);
+    const [waveformLoadProgress, setWaveformLoadProgress] = useState<number | null>(null);
     const [, setResizeTick] = useState(0);
+
+    const applyFitZoom = useCallback((ws: WaveSurfer, audioDuration: number) => {
+        if (audioDuration <= 0) {
+            return;
+        }
+
+        const viewportWidth = containerRef.current?.clientWidth ?? ws.getWidth();
+        const fitZoom = Math.max(0.0001, viewportWidth / audioDuration);
+        const nextZoom = Math.min(Math.max(fitZoom, 0.0001), MAX_ZOOM);
+
+        setMinZoom(fitZoom);
+        setZoom(nextZoom);
+        ws.zoom(nextZoom);
+
+        requestAnimationFrame(() => {
+            ws.setScroll(0);
+            setScrollOffset(0);
+        });
+    }, []);
 
     const getTimelineMetrics = useCallback(() => {
         const ws = wavesurferRef.current;
@@ -43,7 +88,11 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         }
 
         setCurrentTime(0);
+        setDuration(0);
         setIsPlaying(false);
+        setScrollOffset(0);
+        setIsWaveformLoading(false);
+        setWaveformLoadProgress(null);
         wavesurferRef.current?.destroy();
 
         const ws = WaveSurfer.create({
@@ -52,11 +101,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
             progressColor: 'rgba(250, 204, 21, 1)',
             cursorColor: 'rgba(250, 204, 21, 1)',
             cursorWidth: 2,
-            barWidth: 2,
-            barGap: 2,
-            barRadius: 3,
             height: 200,
-            barHeight: 0.8,
             normalize: false,
             interact: false,
             minPxPerSec: zoom,
@@ -68,6 +113,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         const loadAudio = async () => {
             try {
                 const audioPath = task.media.playbackPath;
+                const waveform = task.media.waveform;
 
                 if (!audioPath) {
                     return;
@@ -78,42 +124,53 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
                     return;
                 }
 
-                await ws.load(convertFileSrc(audioPath));
+                const audioUrl = convertFileSrc(audioPath);
+                const cachedWaveform = waveformCache.get(audioPath);
+
+                setIsWaveformLoading(true);
+                setWaveformLoadProgress(cachedWaveform ? 100 : null);
+
+                if (waveform && waveform.peaks.length > 0 && waveform.duration > 0) {
+                    rememberWaveform(audioPath, {
+                        peaks: waveform.peaks,
+                        duration: waveform.duration,
+                    });
+                    await ws.load(audioUrl, waveform.peaks, waveform.duration);
+                    return;
+                }
+
+                if (cachedWaveform) {
+                    await ws.load(audioUrl, cachedWaveform.peaks, cachedWaveform.duration);
+                    return;
+                }
+
+                await ws.load(audioUrl);
             } catch (error: unknown) {
                 if (error instanceof Error && error.name === 'AbortError') {
                     return;
                 }
+                setIsWaveformLoading(false);
+                setWaveformLoadProgress(null);
                 console.error('Failed to load audio source:', error);
             }
         };
 
         void loadAudio();
 
-        ws.on('decode', () => {
-            const decodedData = ws.getDecodedData();
-            if (!decodedData) {
-                return;
-            }
-
-            for (let i = 0; i < decodedData.numberOfChannels; i += 1) {
-                const channelData = decodedData.getChannelData(i);
-                for (let j = 0; j < channelData.length; j += 1) {
-                    const value = channelData[j];
-                    channelData[j] = Math.pow(Math.abs(value), 1.5) * Math.sign(value);
-                }
-            }
+        ws.on('loading', (percent: number) => {
+            setWaveformLoadProgress(percent);
         });
 
         ws.on('ready', () => {
             const audioDuration = ws.getDuration();
+            const audioPath = task.media.playbackPath;
+
             setDuration(audioDuration);
+            setIsWaveformLoading(false);
+            setWaveformLoadProgress(100);
 
             if (audioDuration > 0) {
-                const fitZoom = Math.max(0.5, ws.getWidth() / audioDuration);
-                setMinZoom(fitZoom);
-                const initialZoom = Math.min(Math.max(fitZoom, 0.5), MAX_ZOOM);
-                setZoom(initialZoom);
-                ws.zoom(initialZoom);
+                applyFitZoom(ws, audioDuration);
             }
 
             const defaultTrim: TrimRange = { start: 0, end: audioDuration };
@@ -123,7 +180,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
                 end: Math.max(0, Math.min(currentTrim.end, audioDuration)),
             };
 
-            setScrollOffset(ws.getScroll());
+            setScrollOffset(0);
 
             if (task.editor.segments.length === 0) {
                 const initialSegment: AudioSegment = {
@@ -148,6 +205,26 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
                         trimRange,
                     },
                 }));
+            }
+
+            if (audioPath && !waveformCache.has(audioPath) && ws.getDecodedData()) {
+                const scheduleCache = typeof window.requestIdleCallback === 'function'
+                    ? window.requestIdleCallback.bind(window)
+                    : (callback: IdleRequestCallback) => window.setTimeout(() => callback({
+                        didTimeout: false,
+                        timeRemaining: () => 0,
+                    }), 0);
+
+                scheduleCache(() => {
+                    try {
+                        rememberWaveform(audioPath, {
+                            peaks: ws.exportPeaks(),
+                            duration: audioDuration,
+                        });
+                    } catch (error) {
+                        console.warn('Failed to cache waveform peaks', error);
+                    }
+                });
             }
         });
 
@@ -188,7 +265,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         return () => {
             ws.destroy();
         };
-    }, [task?.id, task?.media.playbackPath, task?.media.extractionPath, task?.source.path, task?.source.kind, updateTask]);
+    }, [applyFitZoom, task?.id, task?.media.playbackPath, task?.media.extractionPath, task?.media.waveform, task?.source.path, task?.source.kind, updateTask]);
 
     useEffect(() => {
         if (!containerRef.current) {
@@ -201,6 +278,20 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         observer.observe(containerRef.current);
         return () => observer.disconnect();
     }, []);
+
+    useEffect(() => {
+        const ws = wavesurferRef.current;
+        if (!ws || duration <= 0) {
+            return;
+        }
+
+        const shouldRefit = zoom <= minZoom * 1.02;
+        if (!shouldRefit) {
+            return;
+        }
+
+        applyFitZoom(ws, duration);
+    }, [applyFitZoom, duration, minZoom, zoom]);
 
     useEffect(() => {
         wavesurferRef.current?.setVolume(volume);
@@ -231,6 +322,11 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
                 }
                 if (Math.abs(event.deltaX) > 0) {
                     const maxScroll = ws.getWrapper().scrollWidth - ws.getWidth();
+                    if (maxScroll <= 1) {
+                        ws.setScroll(0);
+                        setScrollOffset(0);
+                        return;
+                    }
                     const nextScroll = Math.max(0, Math.min(maxScroll, ws.getScroll() + event.deltaX));
                     ws.setScroll(nextScroll);
                     setScrollOffset(ws.getScroll());
@@ -241,6 +337,11 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
             const panDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
             if (Math.abs(panDelta) > 0) {
                 const maxScroll = ws.getWrapper().scrollWidth - ws.getWidth();
+                if (maxScroll <= 1) {
+                    ws.setScroll(0);
+                    setScrollOffset(0);
+                    return;
+                }
                 const nextScroll = Math.max(0, Math.min(maxScroll, ws.getScroll() + panDelta));
                 ws.setScroll(nextScroll);
                 setScrollOffset(ws.getScroll());
@@ -299,6 +400,8 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         isPlaying,
         currentTime,
         duration,
+        isWaveformLoading,
+        waveformLoadProgress,
         volume,
         scrollOffset,
         getTimelineMetrics,
@@ -306,7 +409,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         seekTo: (value: number) => wavesurferRef.current?.setTime(value),
         togglePlay: () => wavesurferRef.current?.playPause(),
         skipBy: (seconds: number) => wavesurferRef.current?.skip(seconds),
-    }), [currentTime, duration, getTimelineMetrics, isPlaying, scrollOffset, volume]);
+    }), [currentTime, duration, getTimelineMetrics, isPlaying, isWaveformLoading, scrollOffset, volume, waveformLoadProgress]);
 
     return api;
 }

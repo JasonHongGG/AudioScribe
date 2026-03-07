@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { api } from '../../services/api';
 import { useStore } from '../../store';
-import { createTaskFromPath, isSupportedMediaPath, isVideoPath } from './taskFactory';
+import { createTaskFromPath, isSupportedMediaPath } from './taskFactory';
 
 export function useTaskIngestion() {
     const addTask = useStore((state) => state.addTask);
@@ -29,15 +29,6 @@ export function useTaskIngestion() {
             });
             addTask(task);
 
-            if (!hasSelectedTask) {
-                selectTask(task.id);
-                hasSelectedTask = true;
-            }
-
-            if (!isVideoPath(path)) {
-                continue;
-            }
-
             const result = await api.extractMedia(path);
             if (result.status === 'ready' && result.media_path) {
                 updateTask(task.id, (currentTask) => ({
@@ -45,6 +36,12 @@ export function useTaskIngestion() {
                     media: {
                         playbackPath: result.media_path ?? currentTask.media.playbackPath,
                         extractionPath: result.media_path ?? currentTask.media.extractionPath,
+                        waveform: result.waveform
+                            ? {
+                                duration: result.waveform.duration,
+                                peaks: result.waveform.peaks,
+                            }
+                            : currentTask.media.waveform,
                     },
                     runtime: {
                         phase: 'ready',
@@ -52,6 +49,11 @@ export function useTaskIngestion() {
                         errorMessage: null,
                     },
                 }));
+
+                if (!hasSelectedTask) {
+                    selectTask(task.id);
+                    hasSelectedTask = true;
+                }
                 continue;
             }
 

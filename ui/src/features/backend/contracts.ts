@@ -13,6 +13,10 @@ export interface HealthResponse {
 export interface ExtractMediaResponse {
     status: 'ready' | 'error';
     media_path?: string | null;
+    waveform?: {
+        duration: number;
+        peaks: number[][];
+    } | null;
     error?: string | null;
 }
 

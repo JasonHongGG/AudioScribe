@@ -24,6 +24,10 @@ export type FileTask = {
     media: {
         playbackPath: string | null;
         extractionPath: string | null;
+        waveform: {
+            duration: number;
+            peaks: number[][];
+        } | null;
     };
     transcription: {
         providerId: ProviderId;

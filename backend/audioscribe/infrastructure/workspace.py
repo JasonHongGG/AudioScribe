@@ -52,6 +52,12 @@ class WorkspacePaths:
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / "audio.mp3"
 
+    def waveform_cache_path(self, source_path: Path) -> Path:
+        fingerprint = self._source_fingerprint(source_path)
+        cache_dir = self.media_cache_dir / fingerprint
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / "waveform.json"
+
     @staticmethod
     def _source_fingerprint(source_path: Path) -> str:
         stat = source_path.stat()

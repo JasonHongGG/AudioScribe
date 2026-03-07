@@ -31,8 +31,9 @@ export function createTaskFromPath(
             kind: isVideo ? 'video' : 'audio',
         },
         media: {
-            playbackPath: isVideo ? null : path,
+            playbackPath: null,
             extractionPath: null,
+            waveform: null,
         },
         transcription: {
             providerId: defaults.providerId,
@@ -43,7 +44,7 @@ export function createTaskFromPath(
             trimRange: null,
         },
         runtime: {
-            phase: isVideo ? 'preparing-media' : 'ready',
+            phase: 'preparing-media',
             progress: 0,
             errorMessage: null,
         },

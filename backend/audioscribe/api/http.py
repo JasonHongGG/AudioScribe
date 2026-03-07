@@ -1,3 +1,5 @@
+import asyncio
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -31,29 +33,47 @@ def create_app() -> FastAPI:
 
     @app.post("/extract-media", response_model=ExtractMediaResponse)
     async def extract_audio(req: ExtractMediaRequest) -> ExtractMediaResponse:
-        import asyncio
-        from audioscribe.utils.ffmpeg import is_video_file, extract_audio_to_mp3
+        from audioscribe.utils.ffmpeg import extract_audio_to_mp3, generate_waveform_peaks, is_video_file
 
         source = Path(req.source_path)
         if not source.exists():
             return ExtractMediaResponse(status="error", error=f"File not found: {req.source_path}")
 
-        if not is_video_file(source):
-            return ExtractMediaResponse(status="ready", media_path=str(source))
-
-        output_mp3 = workspace.media_cache_path(source)
-
-        if output_mp3.exists() and output_mp3.stat().st_mtime >= source.stat().st_mtime:
-            log_bus.write(f"[API] Using cached audio: {output_mp3.name}")
-            return ExtractMediaResponse(status="ready", media_path=str(output_mp3))
-
-        log_bus.write(f"[API] Extracting audio from video: {source.name} (this may take a while...)")
         try:
-            await asyncio.to_thread(extract_audio_to_mp3, source, output_mp3)
-            log_bus.write(f"[API] Audio extracted: {output_mp3.name}")
-            return ExtractMediaResponse(status="ready", media_path=str(output_mp3))
+            media_path = source
+
+            if is_video_file(source):
+                output_mp3 = workspace.media_cache_path(source)
+
+                if output_mp3.exists() and output_mp3.stat().st_mtime >= source.stat().st_mtime:
+                    log_bus.write(f"[API] Using cached audio: {output_mp3.name}")
+                else:
+                    log_bus.write(f"[API] Extracting audio from video: {source.name} (this may take a while...)")
+                    await asyncio.to_thread(extract_audio_to_mp3, source, output_mp3)
+                    log_bus.write(f"[API] Audio extracted: {output_mp3.name}")
+
+                media_path = output_mp3
+
+            waveform_cache = workspace.waveform_cache_path(source)
+            waveform_payload = None
+
+            if waveform_cache.exists() and waveform_cache.stat().st_mtime >= media_path.stat().st_mtime:
+                waveform_payload = json.loads(waveform_cache.read_text(encoding="utf-8"))
+                log_bus.write(f"[API] Using cached waveform: {source.name}")
+            else:
+                log_bus.write(f"[API] Generating waveform peaks: {source.name}")
+                peaks, duration = await asyncio.to_thread(generate_waveform_peaks, media_path)
+                waveform_payload = {"duration": duration, "peaks": peaks}
+                waveform_cache.write_text(json.dumps(waveform_payload), encoding="utf-8")
+                log_bus.write(f"[API] Waveform ready: {source.name}")
+
+            return ExtractMediaResponse(
+                status="ready",
+                media_path=str(media_path),
+                waveform=waveform_payload,
+            )
         except Exception as exc:
-            log_bus.write(f"[API] Audio extraction failed: {exc}")
+            log_bus.write(f"[API] Media preparation failed: {exc}")
             return ExtractMediaResponse(status="error", error=str(exc))
 
     @app.post("/transcriptions", response_model=JobAcceptedResponse)

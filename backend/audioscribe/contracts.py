@@ -16,9 +16,15 @@ class ExtractMediaRequest(BaseModel):
     source_path: str
 
 
+class WaveformPayload(BaseModel):
+    duration: float
+    peaks: list[list[float]] = Field(default_factory=list)
+
+
 class ExtractMediaResponse(BaseModel):
     status: Literal["ready", "error"]
     media_path: str | None = None
+    waveform: WaveformPayload | None = None
     error: str | None = None
 
 
