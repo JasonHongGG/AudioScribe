@@ -74,11 +74,12 @@ export function FileEditor({ taskId }: { taskId: string }) {
             progressColor: 'rgba(250, 204, 21, 1)', // Bright yellow for played
             cursorColor: 'rgba(250, 204, 21, 1)', // Standard thin playhead
             cursorWidth: 2,
-            barWidth: 3,
-            barGap: 3,
-            barRadius: 4,
+            barWidth: 2,
+            barGap: 2,
+            barRadius: 3,
             height: 200,
-            normalize: true,
+            barHeight: 0.8, // Scale down slightly to give top/bottom breathing room
+            normalize: false, // Don't artificially boost all peaks to max height
             interact: false, // Disable native click-to-seek to allow custom pan/split
             minPxPerSec: zoom,
             hideScrollbar: true,
@@ -111,6 +112,22 @@ export function FileEditor({ taskId }: { taskId: string }) {
         loadAudio();
 
         // Event Listeners
+
+        ws.on('decode', () => {
+            const decodedData = ws.getDecodedData();
+            if (decodedData) {
+                // Apply a power curve to the visual amplitude to increase dynamic range appearance.
+                // Modern audio limits peaks near 1.0, making the waveform look like a solid block.
+                // A power curve makes quiet parts visually quieter without clipping max peaks.
+                for (let i = 0; i < decodedData.numberOfChannels; i++) {
+                    const channelData = decodedData.getChannelData(i);
+                    for (let j = 0; j < channelData.length; j++) {
+                        const val = channelData[j];
+                        channelData[j] = Math.pow(Math.abs(val), 1.5) * Math.sign(val);
+                    }
+                }
+            }
+        });
 
         ws.on('ready', () => {
             const audioDuration = ws.getDuration();
