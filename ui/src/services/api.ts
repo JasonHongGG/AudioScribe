@@ -1,27 +1,18 @@
-// AudioScribe Frontend-Backend API Integration Layer
-
 import { fetch } from '@tauri-apps/plugin-http';
-import { FileTask } from '../store';
+import type {
+    BackendRuntimeInfo,
+    EditorSelectionPayload,
+    ExtractMediaResponse,
+    HealthResponse,
+    JobAcceptedResponse,
+    JobStatusResponse,
+    StartTranscriptionRequest,
+} from '../features/backend/contracts';
+import type { FileTask } from '../features/tasks/types';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
 const MAX_POLL_MS = 30 * 60 * 1000;
 
-type StartTranscribeResponse = {
-    status: 'accepted' | 'error';
-    job_id?: string;
-    file?: string;
-    message?: string;
-    error?: string;
-};
-
-type JobStatusResponse = {
-    status: 'running' | 'success' | 'error';
-    job_id?: string;
-    file?: string;
-    progress?: number;
-    message?: string;
-    error?: string;
-};
+let apiBaseUrl: string | null = null;
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,90 +25,98 @@ function getPollIntervalMs(elapsedMs: number): number {
 
 export interface TranscribeResponse {
     status: 'success' | 'error';
-    file?: string;
-    progress?: number;
-    message?: string;
+    transcriptPath?: string;
     error?: string;
 }
 
+export interface HealthProbeResult {
+    ok: boolean;
+    error?: string;
+}
+
+export function configureApiClient(runtime: BackendRuntimeInfo | string): void {
+    apiBaseUrl = typeof runtime === 'string' ? runtime.replace(/\/$/, '') : runtime.endpoint.replace(/\/$/, '');
+}
+
+function requireApiBaseUrl(): string {
+    if (!apiBaseUrl) {
+        throw new Error('Backend endpoint is not configured.');
+    }
+    return apiBaseUrl;
+}
+
+function buildEditorPayload(task: FileTask): EditorSelectionPayload | null {
+    const trimRange = task.editor.trimRange;
+    const segments = task.editor.segments;
+    if (!trimRange && segments.every((segment) => segment.included)) {
+        return null;
+    }
+
+    return {
+        trim_start: trimRange?.start ?? null,
+        trim_end: trimRange?.end ?? null,
+        segments: segments.map((segment) => ({
+            start: segment.start,
+            end: segment.end,
+            included: segment.included,
+        })),
+    };
+}
+
 export const api = {
-    /**
-     * Check if the Python backend is running
-     */
-    async checkHealth(): Promise<boolean> {
+    async checkHealth(endpointOverride?: string): Promise<HealthProbeResult> {
         try {
-            const res = await fetch(`${API_BASE_URL}/health`, {
+            const baseUrl = endpointOverride ?? requireApiBaseUrl();
+            const res = await fetch(`${baseUrl}/health`, {
                 method: 'GET',
-                signal: AbortSignal.timeout(2000)
+                signal: AbortSignal.timeout(2000),
             });
-            return res.ok;
-        } catch (e) {
-            return false;
+            if (!res.ok) {
+                return { ok: false, error: `Health check returned HTTP ${res.status}` };
+            }
+            await res.json() as HealthResponse;
+            return { ok: true };
+        } catch (error) {
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
         }
     },
 
-    /**
-     * Start transcription for a single file
-     */
-    async transcribeFile(
-        filePath: string,
-        provider: 'faster-whisper' | 'qwen3-asr',
-        modelSize: string,
-        trimRange: FileTask['trimRange'],
-        segments: FileTask['segments'],
+    async transcribeTask(
+        task: FileTask,
         onProgress?: (progress: number) => void
     ): Promise<TranscribeResponse> {
         try {
-            // Build dynamic regions config
-            // We pass the trimRange and any excluded segments to the backend
-            let regions = null;
-            if (trimRange || (segments && segments.some(s => !s.included))) {
-                const excludes = [];
-                if (segments) {
-                    for (const seg of segments) {
-                        if (!seg.included) {
-                            excludes.push([seg.start, seg.end]);
-                        }
-                    }
-                }
-
-                regions = {
-                    trim: trimRange ? [trimRange.start, trimRange.end] : null,
-                    excludes: excludes.length > 0 ? excludes : null
-                };
-            }
-
-            const response = await fetch(`${API_BASE_URL}/transcribe`, {
+            const response = await fetch(`${requireApiBaseUrl()}/transcriptions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    file_path: filePath,
-                    provider,
-                    model_size: modelSize,
-                    regions
-                }),
+                    source_path: task.source.path,
+                    media_path: task.media.playbackPath,
+                    options: {
+                        provider_id: task.transcription.providerId,
+                        model_id: task.transcription.modelId,
+                    },
+                    editor: buildEditorPayload(task),
+                } satisfies StartTranscriptionRequest),
             });
 
             if (!response.ok) {
                 return { status: 'error', error: `HTTP Error: ${response.status}` };
             }
 
-            const startData = await response.json() as StartTranscribeResponse;
-            if (startData.status !== 'accepted' || !startData.job_id) {
-                return {
-                    status: 'error',
-                    error: startData.error ?? startData.message ?? 'Failed to start transcription job'
-                };
-            }
+            const startData = await response.json() as JobAcceptedResponse;
 
             const startedAt = Date.now();
             while (Date.now() - startedAt < MAX_POLL_MS) {
                 const elapsedMs = Date.now() - startedAt;
                 await sleep(getPollIntervalMs(elapsedMs));
 
-                const statusRes = await fetch(`${API_BASE_URL}/jobs/${startData.job_id}`, {
+                const statusRes = await fetch(`${requireApiBaseUrl()}/jobs/${startData.job_id}`, {
                     method: 'GET',
                 });
 
@@ -136,39 +135,33 @@ export const api = {
                     onProgress?.(100);
                     return {
                         status: 'success',
-                        file: statusData.file ?? startData.file,
-                        progress: 100,
+                        transcriptPath: statusData.transcript_path ?? undefined,
                     };
                 }
 
                 return {
                     status: 'error',
-                    error: statusData.error ?? statusData.message ?? 'Transcription job failed',
+                    error: statusData.error ?? statusData.details ?? 'Transcription job failed',
                 };
             }
 
             return { status: 'error', error: 'Transcription polling timed out' };
 
         } catch (error) {
-            console.error("API error during transcribe request:", error);
+            console.error('API error during transcription request:', error);
             return {
                 status: 'error',
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
             };
         }
     },
 
-    /**
-     * Extract audio from a video file (mp4, mkv, etc.) via FFmpeg on backend.
-     * Returns the path to the extracted MP3 file.
-     */
-    async extractAudio(filePath: string): Promise<{ status: 'success' | 'error'; audio_path?: string; error?: string }> {
+    async extractMedia(sourcePath: string): Promise<ExtractMediaResponse> {
         try {
-            const response = await fetch(`${API_BASE_URL}/extract-audio`, {
+            const response = await fetch(`${requireApiBaseUrl()}/extract-media`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_path: filePath }),
-                // FFmpeg conversion of large videos can take several minutes
+                body: JSON.stringify({ source_path: sourcePath }),
                 signal: AbortSignal.timeout(30 * 60 * 1000),
             });
 
@@ -176,9 +169,9 @@ export const api = {
                 return { status: 'error', error: `HTTP Error: ${response.status}` };
             }
 
-            return await response.json() as { status: 'success' | 'error'; audio_path?: string; error?: string };
+            return await response.json() as ExtractMediaResponse;
         } catch (error) {
-            console.error("API error during extract-audio request:", error);
+            console.error('API error during extract-media request:', error);
             return {
                 status: 'error',
                 error: error instanceof Error ? error.message : String(error),

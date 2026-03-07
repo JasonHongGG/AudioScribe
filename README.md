@@ -1,21 +1,30 @@
 # AudioScribe
 
-AudioScribe 是純 STT（Speech-to-Text）批次轉錄工具。
+AudioScribe 是桌面優先的 STT（Speech-to-Text）批次轉錄工具。
 
-## 架構（STT 模組化）
+## 架構
 
-- `audioscribe/stt/base.py`：`STTProvider` 抽象介面
-- `audioscribe/stt/provider_registry.py`：provider 建立與註冊
-- `audioscribe/stt/`：STT provider 實作
-	- `faster_whisper_provider.py`
-	- `qwen3_asr_provider.py`
-- `audioscribe/application/transcription_service.py`：核心轉錄流程
-- `audioscribe/application/job_manager.py`：非同步工作排程與狀態管理
-- `audioscribe/api/http.py`：FastAPI 介面
-- `audioscribe/worker.py`：worker 入口
-- `app.py`：CLI 批次入口
+- `ui/`：Tauri + React 桌面 UI
+- `ui/src-tauri/`：桌面殼、sidecar supervisor、動態 backend endpoint 配置
+- `ui/src/features/backend/`：frontend runtime handshake 與 backend client 契約
+- `ui/src/features/tasks/`：任務工作流模型、媒體準備與批次轉錄流程
+- `backend/audioscribe/contracts.py`：backend API 契約
+- `backend/audioscribe/api/http.py`：唯一的 HTTP API 入口
+- `backend/audioscribe/infrastructure/workspace.py`：job artifact 與 media cache workspace
+- `backend/audioscribe/application/job_manager.py`：job 啟動、worker 監控、結果輪詢
+- `backend/audioscribe/application/worker_job.py`：單一 worker 執行流程
+- `backend/audioscribe/application/transcription_service.py`：音訊切段、裁切、轉錄輸出
+- `backend/audioscribe/stt/`：STT provider 實作與 registry
 
-## 環境與安裝（完全使用 uv）
+舊的 CLI 批次入口、固定 port frontend API 綁定、以及來源資料夾直寫輸出流程已移除。系統現在只保留桌面 UI + backend sidecar + job workspace 的單一路徑。
+
+## 執行模型
+
+- Tauri 啟動時會建立 backend sidecar，並回傳動態 HTTP endpoint 給 frontend。
+- 所有 job artifact、暫存檔、媒體抽取快取與 transcript 都寫入 `backend/tmp/`。
+- 前端任務模型已改成 workflow-oriented 結構：source、media、transcription、editor、runtime、result 分離。
+
+## Backend 安裝
 
 1. 安裝 `uv`
 
@@ -35,25 +44,25 @@ uv sync
 uv sync --extra qwen
 ```
 
-## 使用方式
+## 啟動方式
 
-1. 將音檔放入 `audio/`
-2. 執行轉錄，輸出會到 `output/`
-
-### 預設（faster-whisper）
+1. 安裝 UI 依賴
 
 ```bash
-uv run python app.py
+cd ui
+npm install
 ```
 
-### 切換成 Qwen3-ASR
+2. 啟動桌面應用
 
 ```bash
-uv run --extra qwen python app.py --stt-provider qwen3-asr
+npm run tauri dev
 ```
 
-### 指定資料夾
+若 backend Python 不在 `backend/.venv`，可先設定環境變數：
 
 ```bash
-uv run python app.py --audio-dir audio --output-dir output
+set AUDIOSCRIBE_BACKEND_PYTHON=C:\path\to\python.exe
 ```
+
+backend sidecar 會自動選擇可用的 localhost port，不再固定綁定 `127.0.0.1:8000`。

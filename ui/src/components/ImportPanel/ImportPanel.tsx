@@ -82,7 +82,7 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
 
                     {/* Format Pills - Staggered fade in on hover */}
                     <div className="flex gap-3 justify-center">
-                        {['MP3', 'WAV', 'MP4', 'MKV', 'FLAC', 'M4A'].map((ext, i) => (
+                        {['MP3', 'WAV', 'MP4', 'MKV', 'FLAC', 'M4A'].map((ext) => (
                             <motion.div
                                 key={ext}
                                 initial={{ opacity: 0.5, y: 0 }}

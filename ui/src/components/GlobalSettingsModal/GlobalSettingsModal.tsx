@@ -4,29 +4,23 @@ import { Settings2, X, Cpu, Globe, Check } from 'lucide-react';
 import { useStore } from '../../store';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { PROVIDERS, getProviderDescriptor } from '../../features/settings/providerCatalog';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
 }
 
-const MODELS = [
-    { id: 'tiny', name: 'Tiny', desc: 'Fastest, lowest accuracy (approx. 39M params)' },
-    { id: 'base', name: 'Base', desc: 'Good balance for casual use (approx. 74M params)' },
-    { id: 'small', name: 'Small', desc: 'Better accuracy, moderate speed (approx. 244M params)' },
-    { id: 'medium', name: 'Medium', desc: 'High accuracy, slower (approx. 769M params)' },
-    { id: 'large-v2', name: 'Large V2', desc: 'Very high accuracy, requires good GPU (approx. 1550M params)' },
-    { id: 'large-v3', name: 'Large V3', desc: 'State of the art, maximum accuracy' },
-];
-
 export function GlobalSettingsModal() {
     const {
         isGlobalSettingsOpen,
         setIsGlobalSettingsOpen,
-        globalProvider,
-        setGlobalProvider,
-        globalModelSize,
-        setGlobalModelSize
+        globalProviderId,
+        setGlobalProviderId,
+        globalModelId,
+        setGlobalModelId,
     } = useStore();
+
+    const activeProvider = getProviderDescriptor(globalProviderId);
 
     const [activeTab, setActiveTab] = useState<'transcription' | 'general'>('transcription');
 
@@ -108,26 +102,24 @@ export function GlobalSettingsModal() {
                                             <section>
                                                 <h3 className="text-sm font-medium text-foreground-muted mb-4 uppercase tracking-wider">Engine Provider</h3>
                                                 <div className="grid grid-cols-2 gap-4">
-                                                    {[
-                                                        { id: 'faster-whisper', name: 'Faster Whisper', default: true },
-                                                        { id: 'qwen3-asr', name: 'Qwen3 ASR (Advanced)', default: false }
-                                                    ].map((provider) => (
+                                                    {PROVIDERS.map((provider) => (
                                                         <button
                                                             key={provider.id}
-                                                            onClick={() => setGlobalProvider(provider.id as any)}
+                                                            onClick={() => setGlobalProviderId(provider.id)}
                                                             className={cn(
                                                                 "relative flex flex-col items-start p-4 rounded-xl border transition-all text-left",
-                                                                globalProvider === provider.id
+                                                                globalProviderId === provider.id
                                                                     ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(250,204,21,0.1)]"
                                                                     : "bg-surface border-white/5 hover:border-white/20 hover:bg-surface-hover"
                                                             )}
                                                         >
                                                             <div className="flex items-center justify-between w-full mb-1">
-                                                                <span className={cn("font-semibold", globalProvider === provider.id ? "text-primary" : "text-foreground")}>
+                                                                <span className={cn("font-semibold", globalProviderId === provider.id ? "text-primary" : "text-foreground")}>
                                                                     {provider.name}
                                                                 </span>
-                                                                {globalProvider === provider.id && <Check size={16} className="text-primary" />}
+                                                                {globalProviderId === provider.id && <Check size={16} className="text-primary" />}
                                                             </div>
+                                                            <span className="text-xs text-foreground-muted leading-relaxed">{provider.description}</span>
                                                         </button>
                                                     ))}
                                                 </div>
@@ -137,25 +129,25 @@ export function GlobalSettingsModal() {
                                             <section>
                                                 <h3 className="text-sm font-medium text-foreground-muted mb-4 uppercase tracking-wider">Model Size</h3>
                                                 <div className="grid gap-3">
-                                                    {MODELS.map((model) => (
+                                                    {activeProvider.models.map((model) => (
                                                         <button
                                                             key={model.id}
-                                                            onClick={() => setGlobalModelSize(model.id)}
+                                                            onClick={() => setGlobalModelId(model.id)}
                                                             className={cn(
                                                                 "relative flex items-center p-4 rounded-xl border transition-all text-left group",
-                                                                globalModelSize === model.id
+                                                                globalModelId === model.id
                                                                     ? "bg-surface-active border-primary/50 shadow-inner"
                                                                     : "bg-surface border-white/5 hover:border-white/10 hover:bg-surface-hover"
                                                             )}
                                                         >
                                                             <div className={cn(
                                                                 "w-4 h-4 rounded-full border-2 mr-4 flex items-center justify-center transition-colors shrink-0",
-                                                                globalModelSize === model.id ? "border-primary" : "border-foreground-muted group-hover:border-foreground"
+                                                                globalModelId === model.id ? "border-primary" : "border-foreground-muted group-hover:border-foreground"
                                                             )}>
-                                                                {globalModelSize === model.id && <div className="w-2 h-2 rounded-full bg-primary" />}
+                                                                {globalModelId === model.id && <div className="w-2 h-2 rounded-full bg-primary" />}
                                                             </div>
                                                             <div className="flex flex-col">
-                                                                <span className={cn("font-semibold text-sm", globalModelSize === model.id ? "text-foreground" : "text-foreground/80 group-hover:text-foreground")}>
+                                                                <span className={cn("font-semibold text-sm", globalModelId === model.id ? "text-foreground" : "text-foreground/80 group-hover:text-foreground")}>
                                                                     {model.name}
                                                                 </span>
                                                                 <span className="text-xs text-foreground-muted mt-0.5">{model.desc}</span>

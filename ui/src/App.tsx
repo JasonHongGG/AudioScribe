@@ -1,26 +1,22 @@
-import { MainLayout } from './Layout/MainLayout';
-import { FileList } from './components/FileList/FileList';
-import { Dropzone } from './components/Dropzone/Dropzone';
-import { GlobalSettingsModal } from './components/GlobalSettingsModal/GlobalSettingsModal';
-import { FileEditor } from './components/FileEditor/FileEditor';
-import { useStore, FileTask } from './store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { MainLayout } from './Layout/MainLayout';
+import { Dropzone } from './components/Dropzone/Dropzone';
+import { FileEditor } from './components/FileEditor/FileEditor';
+import { FileList } from './components/FileList/FileList';
+import { GlobalSettingsModal } from './components/GlobalSettingsModal/GlobalSettingsModal';
 import { ImportPanel } from './components/ImportPanel/ImportPanel';
-import { api } from './services/api';
-
-const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
-
-function isVideoPath(path: string): boolean {
-  return VIDEO_EXTENSIONS.some(ext => path.toLowerCase().endsWith(ext));
-}
+import { useBackendRuntime } from './features/backend/useBackendRuntime';
+import { SUPPORTED_MEDIA_EXTENSIONS } from './features/tasks/taskFactory';
+import { useTaskIngestion } from './features/tasks/useTaskIngestion';
+import { useStore } from './store';
 
 function App() {
-  const tasks = useStore(state => state.tasks);
-  const selectedTaskId = useStore(state => state.selectedTaskId);
-  const addTask = useStore(state => state.addTask);
-  const updateTask = useStore(state => state.updateTask);
+  const tasks = useStore((state) => state.tasks);
+  const selectedTaskId = useStore((state) => state.selectedTaskId);
+  const ingestPaths = useTaskIngestion();
+  const backendRuntime = useBackendRuntime();
 
   const handleFileUpload = async () => {
     try {
@@ -28,51 +24,18 @@ function App() {
         multiple: true,
         filters: [{
           name: 'Media',
-          extensions: ['mp3', 'wav', 'mp4', 'mkv', 'ogg', 'flac', 'm4a']
-        }]
+          extensions: SUPPORTED_MEDIA_EXTENSIONS.map((extension) => extension.slice(1)),
+        }],
       });
 
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
 
       const filePaths = Array.isArray(selected) ? selected : [selected];
-
-      filePaths.forEach((path) => {
-        const name = path.split(/[/\\]/).pop() || 'Unknown File';
-        const isVideo = isVideoPath(path);
-        const taskId = Math.random().toString(36).substring(7);
-
-        const newTask: FileTask = {
-          id: taskId,
-          name: name,
-          file: null,
-          file_path: path,
-          audio_file_path: null,
-          status: isVideo ? 'extracting' : 'ready',
-          progress: 0,
-          provider: 'faster-whisper',
-          modelSize: 'base',
-          segments: null,
-          trimRange: null,
-        };
-        addTask(newTask);
-
-        // If video, extract audio in background
-        if (isVideo) {
-          api.extractAudio(path).then((result) => {
-            if (result.status === 'success' && result.audio_path) {
-              updateTask(taskId, {
-                audio_file_path: result.audio_path,
-                status: 'ready',
-              });
-            } else {
-              console.error('Audio extraction failed:', result.error);
-              updateTask(taskId, { status: 'error' });
-            }
-          });
-        }
-      });
-    } catch (err) {
-      console.error("Failed to open file dialog", err);
+      await ingestPaths(filePaths);
+    } catch (error) {
+      console.error('Failed to open file dialog', error);
     }
   };
 
@@ -82,10 +45,40 @@ function App() {
       <Dropzone />
       <FileList />
 
-      {/* Right Content Area */}
       <div className="flex-1 relative flex flex-col overflow-hidden min-w-0 min-h-0 rounded-2xl border border-white/[0.05] bg-background-dark/30 backdrop-blur-3xl shadow-2xl">
         <AnimatePresence mode="wait">
-          {tasks.length === 0 ? (
+          {backendRuntime.status === 'starting' ? (
+            <motion.div
+              key="runtime-starting"
+              initial={{ opacity: 0, filter: 'blur(10px)' }}
+              animate={{ opacity: 1, filter: 'blur(0px)' }}
+              transition={{ duration: 0.5 }}
+              className="w-full h-full flex flex-col items-center justify-center gap-4 text-foreground-muted"
+            >
+              <Loader2 size={28} className="animate-spin text-primary" />
+              <div className="text-sm font-semibold tracking-[0.2em] uppercase">Starting audio engine</div>
+            </motion.div>
+          ) : backendRuntime.status === 'error' ? (
+            <motion.div
+              key="runtime-error"
+              initial={{ opacity: 0, filter: 'blur(10px)' }}
+              animate={{ opacity: 1, filter: 'blur(0px)' }}
+              transition={{ duration: 0.5 }}
+              className="w-full h-full flex flex-col items-center justify-center gap-5 px-8 text-center text-foreground-muted"
+            >
+              <AlertCircle size={32} className="text-danger" />
+              <div className="max-w-xl space-y-2">
+                <div className="text-sm font-semibold tracking-[0.2em] uppercase text-foreground">Audio engine failed</div>
+                <p className="text-sm leading-relaxed">{backendRuntime.error}</p>
+              </div>
+              <button
+                onClick={() => { void backendRuntime.retry(); }}
+                className="glass-button px-5 py-3 text-sm font-semibold text-foreground hover:text-primary"
+              >
+                Retry Startup
+              </button>
+            </motion.div>
+          ) : tasks.length === 0 ? (
             <ImportPanel key="empty-state" onImport={handleFileUpload} />
           ) : (
             <motion.div

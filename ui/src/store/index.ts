@@ -1,38 +1,15 @@
 import { create } from 'zustand';
-import { api } from '../services/api';
+import type { ActiveTool, FileTask, ProviderId } from '../features/tasks/types';
+import { getDefaultModelId } from '../features/settings/providerCatalog';
 
-export type AudioSegment = {
-    id: string;
-    start: number;
-    end: number;
-    included: boolean;
-};
+export type { ActiveTool, AudioSegment, FileTask, ProviderId, TrimRange } from '../features/tasks/types';
 
-export type TrimRange = {
-    start: number;
-    end: number;
-};
-
-export type FileTask = {
-    id: string;
-    file: File | null;
-    file_path: string | null;
-    audio_file_path: string | null;  // Extracted audio path (for video files)
-    name: string;
-    status: 'ready' | 'extracting' | 'transcribing' | 'done' | 'error';
-    progress: number;
-    provider: 'faster-whisper' | 'qwen3-asr';
-    modelSize: string;
-    segments: AudioSegment[] | null;
-    trimRange: TrimRange | null;
-};
-
-export type ActiveTool = 'split' | 'include' | 'exclude';
+type TaskUpdater = FileTask | ((task: FileTask) => FileTask);
 
 type AppState = {
     tasks: FileTask[];
-    globalProvider: 'faster-whisper' | 'qwen3-asr';
-    globalModelSize: string;
+    globalProviderId: ProviderId;
+    globalModelId: string;
     isGlobalSettingsOpen: boolean;
     selectedTaskId: string | null;
     activeToolRef: ActiveTool;
@@ -41,19 +18,18 @@ type AppState = {
     addTask: (task: FileTask) => void;
     removeTask: (id: string) => void;
     resetTask: (id: string) => void;
-    updateTask: (id: string, updates: Partial<FileTask>) => void;
-    setGlobalProvider: (provider: 'faster-whisper' | 'qwen3-asr') => void;
-    setGlobalModelSize: (size: string) => void;
+    updateTask: (id: string, updater: TaskUpdater) => void;
+    setGlobalProviderId: (providerId: ProviderId) => void;
+    setGlobalModelId: (modelId: string) => void;
     setIsGlobalSettingsOpen: (isOpen: boolean) => void;
     selectTask: (id: string | null) => void;
     setActiveTool: (tool: ActiveTool) => void;
-    startBatchTranscription: () => Promise<void>;
 };
 
-export const useStore = create<AppState>((set, get) => ({
+export const useStore = create<AppState>((set) => ({
     tasks: [],
-    globalProvider: 'faster-whisper',
-    globalModelSize: 'base',
+    globalProviderId: 'faster-whisper',
+    globalModelId: getDefaultModelId('faster-whisper'),
     isGlobalSettingsOpen: false,
     selectedTaskId: null,
     activeToolRef: 'split',
@@ -67,68 +43,32 @@ export const useStore = create<AppState>((set, get) => ({
 
     resetTask: (id) => set((state) => ({
         tasks: state.tasks.map(t =>
-            t.id === id ? { ...t, status: 'ready', progress: 0 } : t
+            t.id === id
+                ? {
+                    ...t,
+                    runtime: {
+                        phase: t.media.playbackPath ? 'ready' : 'preparing-media',
+                        progress: 0,
+                        errorMessage: null,
+                    },
+                    result: null,
+                }
+                : t
         )
     })),
 
-    updateTask: (id, updates) => set((state) => ({
-        tasks: state.tasks.map(t => t.id === id ? { ...t, ...updates } : t)
+    updateTask: (id, updater) => set((state) => ({
+        tasks: state.tasks.map(t => {
+            if (t.id !== id) {
+                return t;
+            }
+            return typeof updater === 'function' ? updater(t) : updater;
+        })
     })),
 
-    setGlobalProvider: (provider) => set({ globalProvider: provider }),
-    setGlobalModelSize: (size) => set({ globalModelSize: size }),
+    setGlobalProviderId: (providerId) => set({ globalProviderId: providerId, globalModelId: getDefaultModelId(providerId) }),
+    setGlobalModelId: (modelId) => set({ globalModelId: modelId }),
     setIsGlobalSettingsOpen: (isOpen) => set({ isGlobalSettingsOpen: isOpen }),
     selectTask: (id) => set({ selectedTaskId: id }),
     setActiveTool: (tool) => set({ activeToolRef: tool }),
-
-    startBatchTranscription: async () => {
-        const state = get();
-        const pendingTasks = state.tasks.filter(t => t.status === 'ready');
-
-        if (pendingTasks.length === 0) return;
-
-        // Using sequential processing to avoid overwhelming backend/system resources
-        for (const task of pendingTasks) {
-            // Update to extracting/transcribing
-            set((state) => ({
-                tasks: state.tasks.map(t =>
-                    t.id === task.id ? { ...t, status: 'transcribing', progress: 0 } : t
-                )
-            }));
-
-            try {
-                const response = await api.transcribeFile(
-                    task.file_path!,
-                    task.provider,
-                    task.modelSize,
-                    task.trimRange,
-                    task.segments,
-                    (progress) => {
-                        set((state) => ({
-                            tasks: state.tasks.map(t =>
-                                t.id === task.id ? { ...t, progress } : t
-                            )
-                        }));
-                    }
-                );
-
-                // Update based on outcome
-                set((state) => ({
-                    tasks: state.tasks.map(t =>
-                        t.id === task.id ? {
-                            ...t,
-                            status: response.status === 'success' ? 'done' : 'error',
-                            progress: response.status === 'success' ? 100 : t.progress
-                        } : t
-                    )
-                }));
-            } catch (err) {
-                set((state) => ({
-                    tasks: state.tasks.map(t =>
-                        t.id === task.id ? { ...t, status: 'error', progress: 0 } : t
-                    )
-                }));
-            }
-        }
-    }
 }));

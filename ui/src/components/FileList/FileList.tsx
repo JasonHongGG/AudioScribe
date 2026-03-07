@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, CircleDashed, Loader2, Trash2, AlertCircle, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { useBatchTranscription } from '../../features/tasks/useBatchTranscription';
+import { getProviderDescriptor } from '../../features/settings/providerCatalog';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -13,15 +15,15 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
     const { selectTask, removeTask } = useStore();
 
     const getStatusIcon = () => {
-        switch (task.status) {
+        switch (task.runtime.phase) {
             case 'ready':
                 return <CircleDashed size={14} className="text-foreground-muted/60" />;
-            case 'extracting':
-            case 'transcribing':
+            case 'preparing-media':
+            case 'processing':
                 return <Loader2 size={14} className="text-primary animate-spin" />;
-            case 'done':
+            case 'completed':
                 return <CheckCircle2 size={14} className="text-primary-active drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" />;
-            case 'error':
+            case 'failed':
                 return <AlertCircle size={14} className="text-danger drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />;
         }
     };
@@ -34,7 +36,7 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
             exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => task.status !== 'extracting' && selectTask(task.id)}
+            onClick={() => task.runtime.phase !== 'preparing-media' && selectTask(task.id)}
             className={cn(
                 "group relative flex flex-col p-3.5 rounded-xl cursor-pointer transition-all duration-300 border overflow-hidden",
                 isSelected
@@ -52,14 +54,16 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
                         {task.name}
                     </span>
                     <span className="text-[10px] text-foreground-muted mt-0.5 uppercase tracking-wider font-mono opacity-80">
-                        {task.status}
-                        {task.status === 'transcribing' ? ` ${Math.max(0, Math.min(100, Math.floor(task.progress)))}%` : ''}
+                        {task.runtime.phase}
+                        {task.runtime.phase === 'processing' || task.runtime.phase === 'preparing-media'
+                            ? ` ${Math.max(0, Math.min(100, Math.floor(task.runtime.progress)))}%`
+                            : ''}
                     </span>
                 </div>
 
                 {/* Actions (Shows on Hover) */}
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                    {(task.status === 'done' || task.status === 'error') && (
+                    {(task.runtime.phase === 'completed' || task.runtime.phase === 'failed') && (
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -85,12 +89,12 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
             </div>
 
             {/* Premium Progress Bar */}
-            {task.progress > 0 && task.progress < 100 && (
+            {task.runtime.progress > 0 && task.runtime.progress < 100 && (
                 <div className="absolute bottom-0 left-0 h-[2px] bg-background-base/50 w-full overflow-hidden">
                     <motion.div
                         className="h-full bg-gradient-to-r from-primary-active to-primary-light shadow-[0_0_10px_rgba(250,204,21,0.5)]"
                         initial={{ width: 0 }}
-                        animate={{ width: `${task.progress}%` }}
+                        animate={{ width: `${task.runtime.progress}%` }}
                         transition={{ ease: "easeInOut", duration: 0.5 }}
                     />
                 </div>
@@ -102,9 +106,10 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
 export function FileList() {
     const tasks = useStore(state => state.tasks);
     const selectedTaskId = useStore(state => state.selectedTaskId);
-    const globalProvider = useStore(state => state.globalProvider);
+    const globalProviderId = useStore(state => state.globalProviderId);
     const setIsGlobalSettingsOpen = useStore(state => state.setIsGlobalSettingsOpen);
-    const startBatchTranscription = useStore(state => state.startBatchTranscription);
+    const { startBatchTranscription } = useBatchTranscription();
+    const providerDescriptor = getProviderDescriptor(globalProviderId);
 
     return (
         <div className="w-[320px] flex flex-col h-full bg-background-light/40 backdrop-blur-2xl rounded-2xl border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden relative shrink-0">
@@ -125,7 +130,7 @@ export function FileList() {
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                         </span>
-                        {globalProvider === 'faster-whisper' ? 'Faster Whisper' : 'Qwen3 ASR'}
+                            {providerDescriptor.name}
                     </span>
                 </div>
                 <button
@@ -164,15 +169,15 @@ export function FileList() {
             <div className="p-5 border-t border-white/[0.05] bg-black/30 backdrop-blur-md shrink-0 z-10">
                 <button
                     onClick={startBatchTranscription}
-                    disabled={tasks.length === 0}
+                    disabled={!tasks.some((task) => task.runtime.phase === 'ready')}
                     className={cn(
                         "w-full py-3.5 rounded-xl flex items-center justify-center font-bold tracking-[0.2em] transition-all duration-300 relative overflow-hidden group uppercase text-[11px]",
-                        tasks.length > 0
+                        tasks.some((task) => task.runtime.phase === 'ready')
                             ? "bg-primary text-black hover:bg-primary-hover shadow-[0_0_15px_rgba(250,204,21,0.4)] hover:shadow-[0_0_25px_rgba(250,204,21,0.6)] transform hover:-translate-y-0.5"
                             : "bg-white/5 text-foreground-muted/30 cursor-not-allowed border border-white/5"
                     )}
                 >
-                    {tasks.length > 0 && (
+                    {tasks.some((task) => task.runtime.phase === 'ready') && (
                         <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-[150%] group-hover:animate-[shimmer_1.5s_infinite]" />
                     )}
                     <span className="relative z-10 w-full text-center">Commence Batch</span>

@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TextIO
 
 from audioscribe.infrastructure.log_stream import log_bus
 from audioscribe.stt.base import STTProvider
 from audioscribe.utils.ffmpeg import extract_audio_chunk, get_audio_duration
-from audioscribe.utils.regions import RegionConfig, parse_regions_config, resolve_regions, resolve_trim_range
+from audioscribe.utils.regions import RegionConfig, parse_regions_payload, resolve_regions, resolve_trim_range
 
 
 @dataclass(slots=True)
@@ -25,20 +25,23 @@ class ProgressReporter:
 
 
 class TranscriptionService:
-    def __init__(self, provider: STTProvider, progress_callback: Callable[[int], None] | None = None) -> None:
+    def __init__(
+        self,
+        provider: STTProvider,
+        progress_callback: Callable[[int], None] | None = None,
+        tmp_dir: Path | None = None,
+    ) -> None:
         self.provider = provider
         self.progress = ProgressReporter(progress_callback)
-        self.tmp_dir = Path("tmp")
+        self.tmp_dir = tmp_dir or Path("tmp")
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    def transcribe_file(self, audio_path: Path, output_dir: Path) -> Path:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_file = output_dir / f"{audio_path.stem}.txt"
+    def transcribe_file(self, audio_path: Path, output_path: Path, regions_payload: dict | None = None) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         self.progress._last = 0
         self.progress.update(5)
 
-        regions_file = audio_path.with_name(audio_path.stem + ".regions.json")
-        regions_config = parse_regions_config(regions_file)
+        regions_config = parse_regions_payload(regions_payload)
 
         chunks: list[tuple[float, float]] = []
         processing_audio = audio_path
@@ -48,12 +51,12 @@ class TranscriptionService:
         total_duration = self._safe_duration(audio_path)
 
         if regions_config is not None:
-            log_bus.write(f"    找到區段設定檔: {regions_file.name}")
+            log_bus.write("    套用區段與裁切設定")
             duration = total_duration if total_duration > 0 else self._safe_duration(audio_path)
             trim_start, trim_end = resolve_trim_range(regions_config, duration)
 
             if trim_start > 0.0 or trim_end < duration:
-                trim_tmp_path = self.tmp_dir / f"{audio_path.stem}.trim.flac"
+                trim_tmp_path = self.tmp_dir / "trimmed.flac"
                 log_bus.write(f"    先執行裁切範圍: {trim_start:.2f}s -> {trim_end:.2f}s")
                 extract_audio_chunk(audio_path, trim_tmp_path, trim_start, trim_end)
                 processing_audio = trim_tmp_path
@@ -68,7 +71,7 @@ class TranscriptionService:
         self.progress.update(15)
 
         try:
-            with output_file.open("w", encoding="utf-8") as target:
+            with output_path.open("w", encoding="utf-8") as target:
                 if chunks:
                     self._transcribe_chunked(processing_audio, chunks, base_offset, target)
                 else:
@@ -77,11 +80,11 @@ class TranscriptionService:
             if trim_tmp_path is not None and trim_tmp_path.exists():
                 trim_tmp_path.unlink()
 
-        log_bus.write(f"    已產出文字檔案: {output_file}")
+        log_bus.write(f"    已產出文字檔案: {output_path}")
         self.progress.update(100)
-        return output_file
+        return output_path
 
-    def _transcribe_single(self, audio_path: Path, offset: float, total_duration: float, target) -> None:
+    def _transcribe_single(self, audio_path: Path, offset: float, total_duration: float, target: TextIO) -> None:
         self.progress.update(25)
         duration_hint = total_duration
         if offset > 0 and total_duration > 0:
@@ -89,7 +92,13 @@ class TranscriptionService:
         self._transcribe_chunk(audio_path, target, offset, 25, 90, duration_hint)
         self.progress.update(90)
 
-    def _transcribe_chunked(self, source_audio: Path, chunks: list[tuple[float, float]], base_offset: float, target) -> None:
+    def _transcribe_chunked(
+        self,
+        source_audio: Path,
+        chunks: list[tuple[float, float]],
+        base_offset: float,
+        target: TextIO,
+    ) -> None:
         chunk_count = len(chunks)
         log_bus.write(f"    將處理 {chunk_count} 個有效區段...")
 
@@ -98,7 +107,7 @@ class TranscriptionService:
             progress_end = 20 + int(((i + 1) / max(1, chunk_count)) * 70)
             self.progress.update(progress_start)
 
-            chunk_path = self.tmp_dir / f"chunk_{i}.flac"
+            chunk_path = self.tmp_dir / f"chunk_{i:04d}.flac"
             log_bus.write(f"    > 擷取區段 [{i + 1}/{chunk_count}]: {start:.2f}s -> {end:.2f}s")
             extract_audio_chunk(source_audio, chunk_path, start, end)
 
@@ -120,7 +129,7 @@ class TranscriptionService:
     def _transcribe_chunk(
         self,
         audio_path: Path,
-        target,
+        target: TextIO,
         offset: float,
         progress_start: int,
         progress_end: int,
