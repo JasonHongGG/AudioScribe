@@ -10,7 +10,7 @@ from pathlib import Path
 from audioscribe.contracts import JobAcceptedResponse, JobStatusResponse, StartTranscriptionRequest
 from audioscribe.infrastructure.json_files import read_json
 from audioscribe.infrastructure.log_stream import log_bus
-from audioscribe.infrastructure.runtime import build_worker_env
+from audioscribe.infrastructure.runtime import build_worker_env, windows_subprocess_kwargs
 from audioscribe.infrastructure.workspace import JobPaths, WorkspacePaths
 
 
@@ -70,6 +70,7 @@ class JobManager:
             encoding="utf-8",
             errors="replace",
             bufsize=1,
+            **windows_subprocess_kwargs(),
         )
 
         self._jobs[job_id] = JobRecord(
@@ -163,6 +164,7 @@ class JobManager:
                 check=False,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                **windows_subprocess_kwargs(),
             )
             return
 

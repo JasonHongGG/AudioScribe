@@ -9,6 +9,13 @@ use std::{
 
 use tauri::{AppHandle, Manager, RunEvent, State};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 
 #[derive(Clone, serde::Serialize)]
 struct BackendRuntimeInfo {
@@ -241,6 +248,9 @@ fn spawn_backend(config: &BackendLaunchConfig, port: u16) -> Result<Child, Strin
     }
 
     let mut command = Command::new(&config.python);
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+
     command
         .arg("-m")
         .arg("audioscribe.server")

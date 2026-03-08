@@ -4,6 +4,8 @@ import math
 import subprocess
 from pathlib import Path
 
+from audioscribe.infrastructure.runtime import windows_subprocess_kwargs
+
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv", ".ts"}
 
 
@@ -32,7 +34,7 @@ def extract_audio_to_mp3(input_path: Path, output_path: Path) -> None:
         "-ab", "192k",
         str(output_path),
     ]
-    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, **windows_subprocess_kwargs())
 
 
 def get_audio_duration(audio_path: Path) -> float:
@@ -44,7 +46,14 @@ def get_audio_duration(audio_path: Path) -> float:
         "-of", "default=noprint_wrappers=1:nokey=1",
         str(audio_path)
     ]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+    result = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+        **windows_subprocess_kwargs(),
+    )
     return float(result.stdout.strip())
 
 
@@ -70,7 +79,7 @@ def generate_waveform_peaks(audio_path: Path, max_length: int = 8000) -> tuple[l
         "pipe:1",
     ]
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **windows_subprocess_kwargs())
     assert proc.stdout is not None
     remainder = b""
 
@@ -129,4 +138,4 @@ def extract_audio_chunk(input_path: Path, output_path: Path, start: float, end: 
         "-c:a", "flac",
         str(output_path)
     ]
-    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, **windows_subprocess_kwargs())

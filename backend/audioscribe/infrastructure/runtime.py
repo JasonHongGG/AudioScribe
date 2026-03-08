@@ -3,6 +3,9 @@ import sys
 from pathlib import Path
 
 
+CREATE_NO_WINDOW = 0x08000000
+
+
 def bootstrap_windows_cuda_dll() -> None:
     if sys.platform != "win32":
         return
@@ -28,3 +31,9 @@ def build_worker_env() -> dict[str, str]:
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUNBUFFERED", "1")
     return env
+
+
+def windows_subprocess_kwargs() -> dict[str, int]:
+    if sys.platform != "win32":
+        return {}
+    return {"creationflags": CREATE_NO_WINDOW}
