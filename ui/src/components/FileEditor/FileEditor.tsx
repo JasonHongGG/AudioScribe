@@ -64,11 +64,13 @@ export function FileEditor({ taskId }: { taskId: string }) {
                 currentTime={controller.currentTime}
                 duration={controller.duration}
                 volume={controller.volume}
+                playbackRate={controller.playbackRate}
                 isPlaying={controller.isPlaying}
                 onSeek={controller.seekTo}
                 onTogglePlay={controller.togglePlay}
                 onSkip={controller.skipBy}
                 onVolumeChange={controller.setVolume}
+                onPlaybackRateChange={controller.setPlaybackRate}
                 transcriptState={transcriptState}
                 isTranscriptPanelOpen={isTranscriptPanelOpen}
                 onToggleTranscriptPanel={() => setIsTranscriptPanelOpen((value) => !value)}

@@ -45,6 +45,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
     const [scrollOffset, setScrollOffset] = useState(0);
     const [isWaveformLoading, setIsWaveformLoading] = useState(false);
     const [waveformLoadProgress, setWaveformLoadProgress] = useState<number | null>(null);
+    const [playbackRate, setPlaybackRate] = useState(1);
     const [, setResizeTick] = useState(0);
 
     const applyFitZoom = useCallback((ws: WaveSurfer, audioDuration: number) => {
@@ -298,6 +299,10 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
     }, [volume]);
 
     useEffect(() => {
+        wavesurferRef.current?.setPlaybackRate(playbackRate);
+    }, [playbackRate]);
+
+    useEffect(() => {
         const element = glassCardRef.current;
         if (!element) {
             return;
@@ -403,13 +408,15 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         isWaveformLoading,
         waveformLoadProgress,
         volume,
+        playbackRate,
         scrollOffset,
         getTimelineMetrics,
         setVolume,
+        setPlaybackRate,
         seekTo: (value: number) => wavesurferRef.current?.setTime(value),
         togglePlay: () => wavesurferRef.current?.playPause(),
         skipBy: (seconds: number) => wavesurferRef.current?.skip(seconds),
-    }), [currentTime, duration, getTimelineMetrics, isPlaying, isWaveformLoading, scrollOffset, volume, waveformLoadProgress]);
+    }), [currentTime, duration, getTimelineMetrics, isPlaying, isWaveformLoading, scrollOffset, volume, playbackRate, waveformLoadProgress]);
 
     return api;
 }

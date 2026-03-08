@@ -9,10 +9,12 @@ interface PlayerDockProps {
     duration: number;
     volume: number;
     isPlaying: boolean;
+    playbackRate: number;
     onSeek: (value: number) => void;
     onTogglePlay: () => void;
     onSkip: (seconds: number) => void;
     onVolumeChange: (value: number) => void;
+    onPlaybackRateChange: (value: number) => void;
     transcriptState: 'idle' | 'ready' | 'failed';
     isTranscriptPanelOpen: boolean;
     onToggleTranscriptPanel: () => void;
@@ -22,11 +24,13 @@ export function PlayerDock({
     currentTime,
     duration,
     volume,
+    playbackRate,
     isPlaying,
     onSeek,
     onTogglePlay,
     onSkip,
     onVolumeChange,
+    onPlaybackRateChange,
     transcriptState,
     isTranscriptPanelOpen,
     onToggleTranscriptPanel,
@@ -84,29 +88,57 @@ export function PlayerDock({
             </div>
 
             <div className="flex items-center justify-between w-full mt-1">
-                <div className="w-[180px] flex items-center">
+                <div className="w-[200px] flex items-center gap-3">
                     <Tooltip content={transcriptLabel} side="top" delay={0.15}>
                         <button
                             onClick={onToggleTranscriptPanel}
                             className={isTranscriptPanelOpen
-                                ? 'glass-button h-10 w-10 flex items-center justify-center text-primary border-primary/20 shadow-[0_0_18px_rgba(250,204,21,0.12)] transition-colors'
-                                : 'glass-button h-10 w-10 flex items-center justify-center text-foreground-muted hover:text-foreground transition-colors'}
+                                ? 'glass-button h-10 w-10 flex items-center justify-center text-primary border-primary/20 shadow-[0_0_18px_rgba(250,204,21,0.12)] transition-colors shrink-0'
+                                : 'glass-button h-10 w-10 flex items-center justify-center text-foreground-muted hover:text-foreground transition-colors shrink-0'}
                             aria-label={transcriptLabel}
                             aria-pressed={isTranscriptPanelOpen}
                             title={transcriptLabel}
                         >
                             <span className="relative flex items-center justify-center">
-                            <FileText size={14} className={transcriptState === 'ready' ? 'text-primary' : transcriptState === 'failed' ? 'text-danger' : ''} />
-                            {transcriptState !== 'idle' && (
-                                <span className={
-                                    transcriptState === 'ready'
-                                        ? 'absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(250,204,21,0.5)]'
-                                        : 'absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-danger shadow-[0_0_8px_rgba(239,68,68,0.4)]'
-                                } />
-                            )}
+                                <FileText size={14} className={transcriptState === 'ready' ? 'text-primary' : transcriptState === 'failed' ? 'text-danger' : ''} />
+                                {transcriptState !== 'idle' && (
+                                    <span className={
+                                        transcriptState === 'ready'
+                                            ? 'absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(250,204,21,0.5)]'
+                                            : 'absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-danger shadow-[0_0_8px_rgba(239,68,68,0.4)]'
+                                    } />
+                                )}
                             </span>
                         </button>
                     </Tooltip>
+
+                    <div className="group/speed flex items-center h-10 px-1 rounded-full hover:bg-white/[0.04] transition-colors">
+                        <button
+                            className="text-[12px] font-mono font-bold text-foreground-muted group-hover/speed:text-primary transition-colors w-10 text-center shrink-0"
+                            onClick={() => onPlaybackRateChange(1)}
+                            title="Reset speed to 1x"
+                        >
+                            {playbackRate.toFixed(1)}x
+                        </button>
+
+                        <div className="relative h-5 flex items-center w-0 opacity-0 group-hover/speed:w-20 group-hover/speed:opacity-100 group-hover/speed:ml-1 transition-all duration-300">
+                            <input
+                                type="range"
+                                min={0.5}
+                                max={3}
+                                step={0.1}
+                                value={playbackRate}
+                                onChange={(e) => onPlaybackRateChange(parseFloat(e.target.value))}
+                                className="w-full h-full rounded-full appearance-none bg-transparent cursor-pointer outline-none absolute inset-0 z-10 opacity-0"
+                            />
+                            <div className="absolute left-0 right-0 h-1.5 bg-surface-active rounded-full overflow-hidden pointer-events-none transition-all duration-300 group-hover/speed:h-2">
+                                <div
+                                    className="h-full bg-primary rounded-full"
+                                    style={{ width: `${((playbackRate - 0.5) / 2.5) * 100}%` }}
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex items-center justify-center gap-4 flex-1 relative z-10">
@@ -156,7 +188,7 @@ export function PlayerDock({
                     </motion.button>
                 </div>
 
-                <div className="w-[180px] flex items-center gap-4 justify-end">
+                <div className="w-[200px] flex items-center gap-4 justify-end">
                     <div
                         className="group/vol relative h-5 flex items-center w-28 cursor-pointer"
                         onMouseEnter={() => setIsVolumeHovered(true)}
