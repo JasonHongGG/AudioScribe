@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -19,9 +20,10 @@ from audioscribe.infrastructure.workspace import WorkspacePaths
 
 
 bootstrap_windows_cuda_dll()
-BASE_DIR = Path(__file__).resolve().parents[2]
-workspace = WorkspacePaths(base_dir=BASE_DIR)
-job_manager = JobManager(base_dir=BASE_DIR, workspace=workspace)
+SOURCE_BASE_DIR = Path(__file__).resolve().parents[2]
+WORKSPACE_BASE_DIR = Path(os.environ.get("AUDIOSCRIBE_APP_DATA_DIR", SOURCE_BASE_DIR))
+workspace = WorkspacePaths(base_dir=WORKSPACE_BASE_DIR)
+job_manager = JobManager(base_dir=SOURCE_BASE_DIR, workspace=workspace)
 
 
 def create_app() -> FastAPI:

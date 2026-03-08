@@ -1,9 +1,18 @@
+import os
 import json
 import math
 import subprocess
 from pathlib import Path
 
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv", ".ts"}
+
+
+def _ffmpeg_executable() -> str:
+    return os.environ.get("AUDIOSCRIBE_FFMPEG_PATH", "ffmpeg")
+
+
+def _ffprobe_executable() -> str:
+    return os.environ.get("AUDIOSCRIBE_FFPROBE_PATH", "ffprobe")
 
 
 def is_video_file(path: Path) -> bool:
@@ -15,7 +24,7 @@ def extract_audio_to_mp3(input_path: Path, output_path: Path) -> None:
     """Extract audio track from a video file and save as MP3 (192kbps)."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg",
+        _ffmpeg_executable(),
         "-y",
         "-i", str(input_path),
         "-vn",              # Strip video stream
@@ -29,7 +38,7 @@ def extract_audio_to_mp3(input_path: Path, output_path: Path) -> None:
 def get_audio_duration(audio_path: Path) -> float:
     """Get the duration of an audio file in seconds using ffprobe."""
     cmd = [
-        "ffprobe",
+        _ffprobe_executable(),
         "-v", "error",
         "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1",
@@ -51,7 +60,7 @@ def generate_waveform_peaks(audio_path: Path, max_length: int = 8000) -> tuple[l
     frame_index = 0
 
     cmd = [
-        "ffmpeg",
+        _ffmpeg_executable(),
         "-v", "error",
         "-i", str(audio_path),
         "-vn",
@@ -112,7 +121,7 @@ def extract_audio_chunk(input_path: Path, output_path: Path, start: float, end: 
     # Since it's audio, decoding the whole thing is fast anyway, but -ss before -i is fine.
     # Using flac for the temporary chunk to preserve quality without huge file sizes like wav.
     cmd = [
-        "ffmpeg",
+        _ffmpeg_executable(),
         "-y",
         "-ss", str(start),
         "-i", str(input_path),

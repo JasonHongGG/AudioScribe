@@ -3,3 +3,5 @@ audio/*
 __pycache__/
 .venv/
 tmp/
+ui/src-tauri/resources/backend-runtime/
+ui/src-tauri/resources/ffmpeg/

@@ -7,12 +7,26 @@ use std::{
     sync::Mutex,
 };
 
-use tauri::{Manager, RunEvent, State};
+use tauri::{AppHandle, Manager, RunEvent, State};
 
 
 #[derive(Clone, serde::Serialize)]
 struct BackendRuntimeInfo {
     endpoint: String,
+    log_path: String,
+}
+
+
+struct BackendLaunchConfig {
+    current_dir: PathBuf,
+    python: PathBuf,
+    ffmpeg: PathBuf,
+    ffprobe: PathBuf,
+    app_data_dir: PathBuf,
+    log_path: PathBuf,
+    python_home: Option<PathBuf>,
+    python_path: Vec<PathBuf>,
+    extra_path_entries: Vec<PathBuf>,
 }
 
 
@@ -48,6 +62,141 @@ fn backend_python(backend_dir: &Path) -> PathBuf {
 }
 
 
+fn executable_name(base: &str) -> String {
+    if cfg!(target_os = "windows") {
+        format!("{base}.exe")
+    } else {
+        base.to_string()
+    }
+}
+
+
+fn resolve_command_path(name: &str) -> Option<PathBuf> {
+    let candidate = PathBuf::from(name);
+    if candidate.components().count() > 1 && candidate.exists() {
+        return Some(candidate);
+    }
+
+    let path_value = env::var_os("PATH")?;
+    let search_names: Vec<String> = if cfg!(target_os = "windows") {
+        let lowered = name.to_ascii_lowercase();
+        if lowered.ends_with(".exe") {
+            vec![name.to_string()]
+        } else {
+            vec![executable_name(name)]
+        }
+    } else {
+        vec![name.to_string()]
+    };
+
+    for dir in env::split_paths(&path_value) {
+        for search_name in &search_names {
+            let path = dir.join(search_name);
+            if path.exists() {
+                return Some(path);
+            }
+        }
+    }
+
+    None
+}
+
+
+fn app_backend_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Failed to resolve app data directory: {error}"))?
+        .join("backend");
+    fs::create_dir_all(&app_data_dir)
+        .map_err(|error| format!("Failed to create app data directory: {error}"))?;
+    Ok(app_data_dir)
+}
+
+
+fn bundled_backend_launch_config(app: &AppHandle, app_data_dir: &Path) -> Result<Option<BackendLaunchConfig>, String> {
+    let resource_dir = match app.path().resource_dir() {
+        Ok(path) => path,
+        Err(_) => return Ok(None),
+    };
+
+    let backend_dir = resource_dir.join("backend-runtime");
+    let python_home = backend_dir.join("python");
+    let python = python_home.join(executable_name("python"));
+    if !python.exists() {
+        return Ok(None);
+    }
+
+    let ffmpeg_dir = resource_dir.join("ffmpeg");
+    let ffmpeg = ffmpeg_dir.join(executable_name("ffmpeg"));
+    let ffprobe = ffmpeg_dir.join(executable_name("ffprobe"));
+    if !ffmpeg.exists() || !ffprobe.exists() {
+        return Err(format!(
+            "Bundled ffmpeg resources are missing at {}",
+            ffmpeg_dir.display()
+        ));
+    }
+
+    let log_path = app_data_dir.join("logs").join("desktop-sidecar.log");
+    Ok(Some(BackendLaunchConfig {
+        current_dir: backend_dir.clone(),
+        python,
+        ffmpeg,
+        ffprobe,
+        app_data_dir: app_data_dir.to_path_buf(),
+        log_path,
+        python_home: Some(python_home.clone()),
+        python_path: vec![backend_dir.join("app"), backend_dir.join("site-packages")],
+        extra_path_entries: vec![python_home, ffmpeg_dir],
+    }))
+}
+
+
+fn dev_backend_launch_config(app_data_dir: &Path) -> Result<BackendLaunchConfig, String> {
+    let backend_dir = backend_root();
+    let ffmpeg = env::var("AUDIOSCRIBE_FFMPEG_PATH")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| resolve_command_path("ffmpeg"))
+        .ok_or_else(|| String::from("ffmpeg executable was not found. Set AUDIOSCRIBE_FFMPEG_PATH before starting the desktop app."))?;
+    let ffprobe = env::var("AUDIOSCRIBE_FFPROBE_PATH")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| resolve_command_path("ffprobe"))
+        .ok_or_else(|| String::from("ffprobe executable was not found. Set AUDIOSCRIBE_FFPROBE_PATH before starting the desktop app."))?;
+
+    Ok(BackendLaunchConfig {
+        current_dir: backend_dir.clone(),
+        python: backend_python(&backend_dir),
+        ffmpeg: ffmpeg.clone(),
+        ffprobe: ffprobe.clone(),
+        app_data_dir: app_data_dir.to_path_buf(),
+        log_path: app_data_dir.join("logs").join("desktop-sidecar.log"),
+        python_home: None,
+        python_path: Vec::new(),
+        extra_path_entries: vec![
+            ffmpeg
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf(),
+            ffprobe
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf(),
+        ],
+    })
+}
+
+
+fn resolve_backend_launch_config(app: &AppHandle) -> Result<BackendLaunchConfig, String> {
+    let app_data_dir = app_backend_data_dir(app)?;
+    if let Some(config) = bundled_backend_launch_config(app, &app_data_dir)? {
+        return Ok(config);
+    }
+    dev_backend_launch_config(&app_data_dir)
+}
+
+
 fn child_is_running(child: &mut Child) -> bool {
     matches!(child.try_wait(), Ok(None))
 }
@@ -65,14 +214,14 @@ fn reserve_backend_port() -> Result<u16, String> {
 }
 
 
-fn backend_log_files(backend_dir: &Path) -> Result<(std::fs::File, std::fs::File), String> {
-    let log_dir = backend_dir.join("tmp");
+fn backend_log_files(log_path: &Path) -> Result<(std::fs::File, std::fs::File), String> {
+    let log_dir = log_path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(&log_dir)
         .map_err(|error| format!("Failed to create backend log directory: {error}"))?;
     let stdout_file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log_dir.join("desktop-sidecar.log"))
+        .open(log_path)
         .map_err(|error| format!("Failed to open backend log file: {error}"))?;
     let stderr_file = stdout_file
         .try_clone()
@@ -81,22 +230,21 @@ fn backend_log_files(backend_dir: &Path) -> Result<(std::fs::File, std::fs::File
 }
 
 
-fn spawn_backend(port: u16) -> Result<Child, String> {
-    let backend_dir = backend_root();
-    let python = backend_python(&backend_dir);
-    let (stdout_file, stderr_file) = backend_log_files(&backend_dir)?;
+fn spawn_backend(config: &BackendLaunchConfig, port: u16) -> Result<Child, String> {
+    let (stdout_file, stderr_file) = backend_log_files(&config.log_path)?;
 
-    if !python.exists() {
+    if !config.python.exists() {
         return Err(format!(
             "Backend Python executable was not found at {}. Set AUDIOSCRIBE_BACKEND_PYTHON or create backend/.venv first.",
-            python.display()
+            config.python.display()
         ));
     }
 
-    Command::new(&python)
+    let mut command = Command::new(&config.python);
+    command
         .arg("-m")
         .arg("audioscribe.server")
-        .current_dir(&backend_dir)
+        .current_dir(&config.current_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout_file))
         .stderr(Stdio::from(stderr_file))
@@ -104,6 +252,33 @@ fn spawn_backend(port: u16) -> Result<Child, String> {
         .env("PYTHONUNBUFFERED", "1")
         .env("AUDIOSCRIBE_BACKEND_PORT", port.to_string())
         .env("AUDIOSCRIBE_PARENT_PID", std::process::id().to_string())
+        .env("AUDIOSCRIBE_APP_DATA_DIR", &config.app_data_dir)
+        .env("AUDIOSCRIBE_FFMPEG_PATH", &config.ffmpeg)
+        .env("AUDIOSCRIBE_FFPROBE_PATH", &config.ffprobe);
+
+    if let Some(python_home) = &config.python_home {
+        command
+            .env("PYTHONHOME", python_home)
+            .env("PYTHONNOUSERSITE", "1");
+    }
+
+    if !config.python_path.is_empty() {
+        let python_path = env::join_paths(&config.python_path)
+            .map_err(|error| format!("Failed to assemble PYTHONPATH: {error}"))?;
+        command.env("PYTHONPATH", python_path);
+    }
+
+    if !config.extra_path_entries.is_empty() {
+        let mut path_entries = config.extra_path_entries.clone();
+        if let Some(existing_path) = env::var_os("PATH") {
+            path_entries.extend(env::split_paths(&existing_path));
+        }
+        let joined_path = env::join_paths(path_entries)
+            .map_err(|error| format!("Failed to assemble PATH for backend runtime: {error}"))?;
+        command.env("PATH", joined_path);
+    }
+
+    command
         .spawn()
         .map_err(|error| format!("Failed to start backend process: {error}"))
 }
@@ -191,7 +366,7 @@ fn unique_destination_path(destination: &Path) -> PathBuf {
 
 
 #[tauri::command]
-fn ensure_backend_started(state: State<'_, BackendState>) -> Result<BackendRuntimeInfo, String> {
+fn ensure_backend_started(app: AppHandle, state: State<'_, BackendState>) -> Result<BackendRuntimeInfo, String> {
     let mut child_slot = state
         .child
         .lock()
@@ -212,10 +387,12 @@ fn ensure_backend_started(state: State<'_, BackendState>) -> Result<BackendRunti
     }
 
     let port = reserve_backend_port()?;
+    let launch_config = resolve_backend_launch_config(&app)?;
     let runtime = BackendRuntimeInfo {
         endpoint: format!("http://127.0.0.1:{port}"),
+        log_path: launch_config.log_path.to_string_lossy().into_owned(),
     };
-    *child_slot = Some(spawn_backend(port)?);
+    *child_slot = Some(spawn_backend(&launch_config, port)?);
     *runtime_slot = Some(runtime.clone());
     Ok(runtime)
 }

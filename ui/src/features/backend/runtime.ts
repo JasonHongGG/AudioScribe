@@ -2,8 +2,6 @@ import { invoke } from '@tauri-apps/api/core';
 import type { BackendRuntimeInfo } from './contracts';
 import { api, configureApiClient } from '../../services/api';
 
-const BACKEND_LOG_HINT = 'backend/tmp/desktop-sidecar.log';
-
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -14,7 +12,7 @@ async function resolveBackendRuntime(): Promise<BackendRuntimeInfo> {
     } catch {
         const envEndpoint = import.meta.env.VITE_AUDIOSCRIBE_API_BASE_URL;
         if (envEndpoint) {
-            return { endpoint: envEndpoint };
+            return { endpoint: envEndpoint, log_path: 'desktop backend log path unavailable in browser-only mode' };
         }
         throw new Error('Desktop backend runtime is unavailable. Start the app through Tauri or configure VITE_AUDIOSCRIBE_API_BASE_URL.');
     }
@@ -41,7 +39,7 @@ export async function ensureBackendReady(timeoutMs = 45000): Promise<BackendRunt
     }
 
     throw new Error(
-        `Audio engine failed to start at ${runtime.endpoint}. Check ${BACKEND_LOG_HINT}.` +
+        `Audio engine failed to start at ${runtime.endpoint}. Check ${runtime.log_path}.` +
         (lastError ? ` Last probe error: ${lastError}` : '')
     );
 }

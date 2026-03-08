@@ -9,3 +9,13 @@
 3. 用 `npm run tauri dev` 啟動桌面應用。
 
 如果 backend Python 不在預設的 `../backend/.venv`，可用環境變數 `AUDIOSCRIBE_BACKEND_PYTHON` 指到正確的 Python 執行檔。
+
+## Release 打包
+
+Windows GPU 版 release 可以直接執行：
+
+```bash
+npm run build:release
+```
+
+流程會先建立 `src-tauri/resources/backend-runtime/` 與 `src-tauri/resources/ffmpeg/`，再呼叫 `tauri build` 產生安裝包。

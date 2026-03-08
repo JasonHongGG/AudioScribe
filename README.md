@@ -21,8 +21,38 @@ AudioScribe 是桌面優先的 STT（Speech-to-Text）批次轉錄工具。
 ## 執行模型
 
 - Tauri 啟動時會建立 backend sidecar，並回傳動態 HTTP endpoint 給 frontend。
-- 所有 job artifact、暫存檔、媒體抽取快取與 transcript 都寫入 `backend/tmp/`。
+- 原始碼模式下 backend 仍從 repo 啟動，但 job artifact、暫存檔、媒體抽取快取、transcript 與 sidecar log 都寫入使用者 app data 目錄。
 - 前端任務模型已改成 workflow-oriented 結構：source、media、transcription、editor、runtime、result 分離。
+
+## Release 打包
+
+目前只支援 GPU 版本 release，不提供 CPU 版 runtime。
+
+### 前置條件
+
+- `backend/.venv` 已建立並安裝 GPU 版 backend 依賴
+- `ffmpeg.exe` 與 `ffprobe.exe` 可由系統 `PATH` 找到，或在執行 build 前透過環境變數覆寫
+
+### 一鍵出包
+
+```bash
+cd ui
+npm run build:release
+```
+
+這個流程會先執行 `scripts/build-backend-runtime.ps1`，將下列資源組到 `ui/src-tauri/resources/`：
+
+- 可隨 app 發佈的 Python runtime
+- `backend/audioscribe` backend 程式碼
+- backend `.venv` 內的 Python 套件
+- `ffmpeg.exe` / `ffprobe.exe`
+
+之後再執行 `tauri build` 產生安裝包。
+
+### 產物位置
+
+- `ui/src-tauri/target/release/bundle/msi/AudioScribe_0.1.0_x64_en-US.msi`
+- `ui/src-tauri/target/release/bundle/nsis/AudioScribe_0.1.0_x64-setup.exe`
 
 ## Backend 安裝
 

@@ -2,6 +2,7 @@ import type { ProviderId } from '../tasks/types';
 
 export interface BackendRuntimeInfo {
     endpoint: string;
+    log_path: string;
 }
 
 export interface HealthResponse {

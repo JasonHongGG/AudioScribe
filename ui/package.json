@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:backend-runtime": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/build-backend-runtime.ps1",
+    "build:release": "npm run build:backend-runtime && tauri build",
     "preview": "vite preview",
     "tauri": "tauri"
   },
