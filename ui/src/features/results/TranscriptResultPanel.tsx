@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { save } from '@tauri-apps/plugin-dialog';
 import { AlertCircle, FileOutput, FolderOpen, GripHorizontal, Loader2, ScrollText, X } from 'lucide-react';
@@ -39,6 +39,8 @@ export function TranscriptResultPanel({ entry, isOpen, height, currentTime, onSe
     const [actionError, setActionError] = useState<string | null>(null);
     const [isExporting, setIsExporting] = useState(false);
     const cueRefs = useRef<Record<string, HTMLDivElement | null>>({});
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+    const wheelDeltaAccumulatorRef = useRef(0);
 
     const canLoadTranscript = entry.latestRun?.status === 'completed' && !!runId;
     const { document, cues, isLoading, error } = useTranscriptDocument({
@@ -48,19 +50,59 @@ export function TranscriptResultPanel({ entry, isOpen, height, currentTime, onSe
     });
     const activeCueIndex = useMemo(() => findActiveTranscriptCueIndex(cues, currentTime), [cues, currentTime]);
 
-    useEffect(() => {
-        if (!isOpen || activeCueIndex < 0) {
+    const resolveCueScrollTop = (container: HTMLDivElement, cueElement: HTMLDivElement) => {
+        const containerRect = container.getBoundingClientRect();
+        const cueRect = cueElement.getBoundingClientRect();
+        return container.scrollTop + (cueRect.top - containerRect.top);
+    };
+
+    const handleTranscriptWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+        const container = scrollContainerRef.current;
+        if (!container || cues.length === 0) {
             return;
         }
 
-        const activeCue = cues[activeCueIndex];
-        const activeElement = cueRefs.current[activeCue.id];
-        if (!activeElement) {
+        const deltaThreshold = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 48 : 1;
+
+        event.preventDefault();
+        wheelDeltaAccumulatorRef.current += event.deltaY;
+
+        if (Math.abs(wheelDeltaAccumulatorRef.current) < deltaThreshold) {
             return;
         }
 
-        activeElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }, [activeCueIndex, cues, isOpen]);
+        const direction = Math.sign(wheelDeltaAccumulatorRef.current);
+        wheelDeltaAccumulatorRef.current = 0;
+
+        const cuePositions = cues
+            .map((cue) => {
+                const element = cueRefs.current[cue.id];
+                if (!element) {
+                    return null;
+                }
+                return {
+                    id: cue.id,
+                    top: resolveCueScrollTop(container, element),
+                };
+            })
+            .filter((item): item is { id: string; top: number } => item !== null);
+
+        if (cuePositions.length === 0) {
+            return;
+        }
+
+        const currentTop = container.scrollTop;
+        const threshold = 4;
+
+        if (direction > 0) {
+            const nextCue = cuePositions.find((cue) => cue.top > currentTop + threshold);
+            container.scrollTo({ top: nextCue?.top ?? cuePositions[cuePositions.length - 1].top, behavior: 'auto' });
+            return;
+        }
+
+        const previousCue = [...cuePositions].reverse().find((cue) => cue.top < currentTop - threshold);
+        container.scrollTo({ top: previousCue?.top ?? cuePositions[0].top, behavior: 'auto' });
+    };
 
     const handleReveal = async () => {
         if (!transcriptPath) {
@@ -148,7 +190,7 @@ export function TranscriptResultPanel({ entry, isOpen, height, currentTime, onSe
         return (
             <div className="flex-1 min-h-0 px-4 pt-0.5 pb-2.5">
                 <div className="h-full rounded-[1.35rem] border border-white/[0.05] bg-background-base/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] overflow-hidden">
-                    <div className="h-full overflow-y-auto px-5 pt-2.5 pb-16">
+                    <div ref={scrollContainerRef} onWheel={handleTranscriptWheel} className="h-full overflow-y-auto px-5 pt-2.5 pb-16">
                         {cues.length > 0 ? (
                             <div className="flex flex-col gap-1.5 pb-2">
                                 {cues.map((cue, index) => {

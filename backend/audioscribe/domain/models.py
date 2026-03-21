@@ -173,7 +173,7 @@ class WorkflowProfile:
         return cls(
             capability="transcription" if capability != "transcription" else capability,
             provider_id=str(payload.get("provider_id") or "faster-whisper"),
-            model_id=str(payload.get("model_id") or "base"),
+            model_id=str(payload.get("model_id") or "large-v3"),
         )
 
 

@@ -13,6 +13,7 @@ export function usePlaybackService(
 ) {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const latestEntryRef = useRef<WorkbenchEntry | undefined>(entry);
+    const animationFrameRef = useRef<number | null>(null);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -23,6 +24,40 @@ export function usePlaybackService(
     useEffect(() => {
         latestEntryRef.current = entry;
     }, [entry]);
+
+    const stopTimeTracking = useCallback(() => {
+        if (animationFrameRef.current !== null) {
+            window.cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+        }
+    }, []);
+
+    const startTimeTracking = useCallback(() => {
+        const audio = audioRef.current;
+        if (!audio) {
+            return;
+        }
+
+        stopTimeTracking();
+
+        const tick = () => {
+            const currentAudio = audioRef.current;
+            if (!currentAudio) {
+                animationFrameRef.current = null;
+                return;
+            }
+
+            setCurrentTime(currentAudio.currentTime);
+
+            if (!currentAudio.paused && !currentAudio.ended) {
+                animationFrameRef.current = window.requestAnimationFrame(tick);
+            } else {
+                animationFrameRef.current = null;
+            }
+        };
+
+        animationFrameRef.current = window.requestAnimationFrame(tick);
+    }, [stopTimeTracking]);
 
     useEffect(() => {
         if (!entry?.asset.media.playbackPath) {
@@ -67,30 +102,48 @@ export function usePlaybackService(
         };
 
         const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
-        const handlePlay = () => setIsPlaying(true);
-        const handlePause = () => setIsPlaying(false);
-        const handleEnded = () => setIsPlaying(false);
+        const handlePlay = () => {
+            setIsPlaying(true);
+            startTimeTracking();
+        };
+        const handlePause = () => {
+            setIsPlaying(false);
+            setCurrentTime(audio.currentTime);
+            stopTimeTracking();
+        };
+        const handleEnded = () => {
+            setIsPlaying(false);
+            setCurrentTime(audio.currentTime);
+            stopTimeTracking();
+        };
+        const handleSeeking = () => setCurrentTime(audio.currentTime);
+        const handleSeeked = () => setCurrentTime(audio.currentTime);
 
         audio.addEventListener('loadedmetadata', handleLoadedMetadata);
         audio.addEventListener('timeupdate', handleTimeUpdate);
         audio.addEventListener('play', handlePlay);
         audio.addEventListener('pause', handlePause);
         audio.addEventListener('ended', handleEnded);
+        audio.addEventListener('seeking', handleSeeking);
+        audio.addEventListener('seeked', handleSeeked);
         audio.load();
 
         return () => {
+            stopTimeTracking();
             audio.pause();
             audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
             audio.removeEventListener('timeupdate', handleTimeUpdate);
             audio.removeEventListener('play', handlePlay);
             audio.removeEventListener('pause', handlePause);
             audio.removeEventListener('ended', handleEnded);
+            audio.removeEventListener('seeking', handleSeeking);
+            audio.removeEventListener('seeked', handleSeeked);
             audio.src = '';
             audioRef.current = null;
             setIsPlaying(false);
             setCurrentTime(0);
         };
-    }, [entry?.asset.assetId, entry?.asset.media.playbackPath, playbackRate, updateEditorSession, volume, waveformDuration]);
+    }, [entry?.asset.assetId, entry?.asset.media.playbackPath, playbackRate, startTimeTracking, stopTimeTracking, updateEditorSession, volume, waveformDuration]);
 
     useEffect(() => {
         if (!duration && waveformDuration) {

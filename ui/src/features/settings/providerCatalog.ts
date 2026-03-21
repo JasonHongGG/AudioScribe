@@ -19,7 +19,7 @@ export const PROVIDERS: ProviderDescriptor[] = [
         id: 'faster-whisper',
         name: 'Faster Whisper',
         description: 'Local Whisper inference optimized for iterative editing and stable timestamps.',
-        defaultModelId: 'base',
+        defaultModelId: 'large-v3',
         models: [
             { id: 'tiny', name: 'Tiny', desc: 'Fastest, lowest accuracy (approx. 39M params)' },
             { id: 'base', name: 'Base', desc: 'Good balance for casual use (approx. 74M params)' },
