@@ -5,18 +5,23 @@ export function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
 }
 
-export function formatTime(seconds: number) {
+export function formatTime(seconds: number, options?: { includeFractions?: boolean }) {
+    const includeFractions = options?.includeFractions ?? false;
     const totalSeconds = Math.floor(seconds);
     const hours = Math.floor(totalSeconds / 3600);
     const mins = Math.floor((totalSeconds % 3600) / 60);
     const secs = totalSeconds % 60;
-    const ms = Math.floor((seconds % 1) * 100);
+    const fraction = Math.floor((seconds % 1) * 100);
 
-    if (hours > 0) {
-        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+    const base = hours > 0
+        ? `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+        : `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+    if (!includeFractions) {
+        return base;
     }
 
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+    return `${base}.${fraction.toString().padStart(2, '0')}`;
 }
 
 export function pickTimelineStep(pixelsPerSecond: number) {

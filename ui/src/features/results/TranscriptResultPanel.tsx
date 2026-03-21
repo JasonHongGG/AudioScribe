@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { save } from '@tauri-apps/plugin-dialog';
-import { AlertCircle, FileOutput, FolderOpen, Loader2, ScrollText, X } from 'lucide-react';
+import { AlertCircle, FileOutput, FolderOpen, GripHorizontal, Loader2, ScrollText, X } from 'lucide-react';
 import type { WorkbenchEntry } from '../workbench/models';
 import {
     exportTranscriptDocument,
-    loadTranscriptDocument,
+    findActiveTranscriptCueIndex,
     revealTranscriptDocument,
-    type TranscriptDocument,
 } from './transcript';
+import { useTranscriptDocument } from './useTranscriptDocument';
 
 
 interface TranscriptResultPanelProps {
     entry: WorkbenchEntry;
     isOpen: boolean;
+    height: number;
+    currentTime: number;
+    onSeekToTime: (value: number) => void;
     onClose: () => void;
+    onResizeStart: (event: React.PointerEvent<HTMLElement>) => void;
 }
 
 
@@ -24,71 +28,39 @@ function filenameFromEntry(entry: WorkbenchEntry): string {
 }
 
 
-export function TranscriptResultPanel({ entry, isOpen, onClose }: TranscriptResultPanelProps) {
+function compactTimestamp(label: string): string {
+    return label.split('.')[0] ?? label;
+}
+
+
+export function TranscriptResultPanel({ entry, isOpen, height, currentTime, onSeekToTime, onClose, onResizeStart }: TranscriptResultPanelProps) {
     const transcriptPath = entry.latestRun?.artifact?.path ?? null;
     const runId = entry.latestRun?.runId ?? null;
-    const [document, setDocument] = useState<TranscriptDocument | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [isExporting, setIsExporting] = useState(false);
+    const cueRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
     const canLoadTranscript = entry.latestRun?.status === 'completed' && !!runId;
+    const { document, cues, isLoading, error } = useTranscriptDocument({
+        isOpen,
+        canLoad: canLoadTranscript,
+        runId,
+    });
+    const activeCueIndex = useMemo(() => findActiveTranscriptCueIndex(cues, currentTime), [cues, currentTime]);
 
     useEffect(() => {
-        let cancelled = false;
-        let intervalId: number | undefined;
-
-        async function readTranscript(showLoader: boolean) {
-            if (!isOpen || !canLoadTranscript || !runId) {
-                setDocument(null);
-                setError(null);
-                setIsLoading(false);
-                return;
-            }
-
-            if (showLoader) {
-                setIsLoading(true);
-            }
-            setError(null);
-
-            try {
-                const nextDocument = await loadTranscriptDocument(runId);
-                if (!cancelled) {
-                    setDocument((current) => {
-                        if (current?.path === nextDocument.path && current.content === nextDocument.content) {
-                            return current;
-                        }
-                        return nextDocument;
-                    });
-                }
-            } catch (loadError) {
-                if (!cancelled) {
-                    setDocument(null);
-                    setError(loadError instanceof Error ? loadError.message : String(loadError));
-                }
-            } finally {
-                if (!cancelled) {
-                    setIsLoading(false);
-                }
-            }
+        if (!isOpen || activeCueIndex < 0) {
+            return;
         }
 
-        void readTranscript(true);
-
-        if (isOpen && canLoadTranscript && runId) {
-            intervalId = window.setInterval(() => {
-                void readTranscript(false);
-            }, 1500);
+        const activeCue = cues[activeCueIndex];
+        const activeElement = cueRefs.current[activeCue.id];
+        if (!activeElement) {
+            return;
         }
 
-        return () => {
-            cancelled = true;
-            if (intervalId !== undefined) {
-                window.clearInterval(intervalId);
-            }
-        };
-    }, [isOpen, canLoadTranscript, runId]);
+        activeElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, [activeCueIndex, cues, isOpen]);
 
     const handleReveal = async () => {
         if (!transcriptPath) {
@@ -177,7 +149,43 @@ export function TranscriptResultPanel({ entry, isOpen, onClose }: TranscriptResu
             <div className="flex-1 min-h-0 px-4 pt-0.5 pb-2.5">
                 <div className="h-full rounded-[1.35rem] border border-white/[0.05] bg-background-base/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] overflow-hidden">
                     <div className="h-full overflow-y-auto px-5 pt-2.5 pb-16">
-                        <pre className="whitespace-pre-wrap break-words text-[13px] leading-[1.65] text-foreground/90 font-mono">{document?.content || 'Transcript is empty.'}</pre>
+                        {cues.length > 0 ? (
+                            <div className="flex flex-col gap-1.5 pb-2">
+                                {cues.map((cue, index) => {
+                                    const isActive = index === activeCueIndex;
+                                    return (
+                                        <div
+                                            key={cue.id}
+                                            ref={(node) => {
+                                                cueRefs.current[cue.id] = node;
+                                            }}
+                                            className={isActive
+                                                ? 'grid grid-cols-[max-content_minmax(0,1fr)] items-start gap-3 rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 shadow-[0_0_18px_rgba(250,204,21,0.07)] transition-colors'
+                                                : 'grid grid-cols-[max-content_minmax(0,1fr)] items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition-colors hover:border-white/[0.06] hover:bg-white/[0.02]'}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => onSeekToTime(cue.startTime)}
+                                                className={isActive
+                                                    ? 'inline-flex h-fit w-fit justify-self-start items-center rounded-lg border border-primary/25 bg-primary/18 px-2.5 py-1.5 text-left font-mono text-[11px] leading-none text-primary shadow-[0_0_14px_rgba(250,204,21,0.12)] transition-colors hover:bg-primary/24'
+                                                    : 'inline-flex h-fit w-fit justify-self-start items-center rounded-lg border border-white/[0.06] bg-black/20 px-2.5 py-1.5 text-left font-mono text-[11px] leading-none text-foreground-muted transition-colors hover:border-primary/20 hover:text-primary'}
+                                                title={`Seek to ${cue.startLabel}`}
+                                            >
+                                                <span className="whitespace-nowrap">{compactTimestamp(cue.startLabel)} <span className="opacity-45">-</span> {compactTimestamp(cue.endLabel)}</span>
+                                            </button>
+
+                                            <div className="min-w-0 py-0.5">
+                                                <div className={isActive ? 'text-[13px] leading-[1.45] text-foreground font-medium' : 'text-[13px] leading-[1.45] text-foreground/86'}>
+                                                    {cue.text || cue.rawLine}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <pre className="whitespace-pre-wrap break-words text-[13px] leading-[1.65] text-foreground/90 font-mono">{document?.content || 'Transcript is empty.'}</pre>
+                        )}
                     </div>
                 </div>
             </div>
@@ -206,7 +214,17 @@ export function TranscriptResultPanel({ entry, isOpen, onClose }: TranscriptResu
                         exit={{ opacity: 0, y: 24, x: '-50%' }}
                         transition={{ duration: 0.28, ease: 'easeOut' }}
                     >
-                        <div className="h-[14.8rem] rounded-t-[2rem] rounded-b-[1rem] border border-white/[0.08] border-b-white/[0.03] bg-background-base/95 backdrop-blur-3xl shadow-[0_25px_80px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden flex flex-col">
+                        <div className="rounded-t-[2rem] rounded-b-[1rem] border border-white/[0.08] border-b-white/[0.03] bg-background-base/95 backdrop-blur-3xl shadow-[0_25px_80px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden flex flex-col" style={{ height }}>
+                            <button
+                                type="button"
+                                onPointerDown={onResizeStart}
+                                className="group flex h-5 w-full items-center justify-center border-b border-white/[0.04] bg-white/[0.015] text-foreground-muted/70 transition-colors hover:text-primary cursor-ns-resize"
+                                aria-label="Resize transcript panel"
+                                title="Drag to resize transcript panel"
+                            >
+                                <GripHorizontal size={14} className="transition-transform group-hover:scale-110" />
+                            </button>
+
                             <div className="px-5 py-1.5 border-b border-white/[0.05] bg-black/22 shrink-0">
                                 <div className="flex items-center justify-between gap-4 min-h-7">
                                     <div className="text-[10px] leading-none uppercase tracking-[0.24em] text-foreground-muted">Transcript result</div>

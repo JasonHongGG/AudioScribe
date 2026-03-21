@@ -37,7 +37,7 @@ export function EditorTimeline({ duration, scrollOffset, viewportWidth, totalWid
                     >
                         <div className="w-px h-2.5 bg-white/30" />
                         <div className="text-[10px] uppercase font-mono tracking-widest leading-none text-foreground-muted/70 mt-1.5 whitespace-nowrap">
-                            {stepSec >= 1 ? formatTime(tick).split('.')[0] : formatTime(tick)}
+                            {formatTime(tick, { includeFractions: stepSec < 1 })}
                         </div>
                     </div>
                 );

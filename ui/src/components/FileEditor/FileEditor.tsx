@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { PlayerDock } from '../../features/editor/PlayerDock';
 import { EditorCanvas } from '../../features/editor/EditorCanvas';
 import { EditorHeader } from '../../features/editor/EditorHeader';
 import { TranscriptResultPanel } from '../../features/results/TranscriptResultPanel';
+import { useTranscriptPanelState } from '../../features/results/useTranscriptPanelState';
 import { useWaveSurferController } from '../../features/editor/useWaveSurferController';
 import { useSegmentEditor } from '../../features/editor/useSegmentEditor';
 import { useToolStore } from '../../features/workbench/toolStore';
@@ -32,7 +33,7 @@ export function FileEditor({ assetId }: { assetId: string }) {
     }, [asset, editorSession, draft, latestRun]);
     const resolvedEntry = entry ?? undefined;
 
-    const [isTranscriptPanelOpen, setIsTranscriptPanelOpen] = useState(false);
+    const transcriptPanel = useTranscriptPanelState({ resetKey: assetId });
     const controller = useWaveSurferController(resolvedEntry, updateEditorSession);
     const segmentEditor = useSegmentEditor({
         entry: resolvedEntry,
@@ -48,10 +49,6 @@ export function FileEditor({ assetId }: { assetId: string }) {
     if (!entry) {
         return null;
     }
-
-    useEffect(() => {
-        setIsTranscriptPanelOpen(false);
-    }, [entry.asset.assetId]);
 
     const transcriptState = entry.latestRun?.status === 'completed' && entry.latestRun.artifact
         ? 'ready'
@@ -72,8 +69,12 @@ export function FileEditor({ assetId }: { assetId: string }) {
 
             <TranscriptResultPanel
                 entry={entry}
-                isOpen={isTranscriptPanelOpen}
-                onClose={() => setIsTranscriptPanelOpen(false)}
+                isOpen={transcriptPanel.isOpen}
+                height={transcriptPanel.height}
+                currentTime={controller.currentTime}
+                onSeekToTime={controller.seekTo}
+                onClose={transcriptPanel.closePanel}
+                onResizeStart={transcriptPanel.startResize}
             />
 
             <PlayerDock
@@ -88,8 +89,8 @@ export function FileEditor({ assetId }: { assetId: string }) {
                 onVolumeChange={controller.setVolume}
                 onPlaybackRateChange={controller.setPlaybackRate}
                 transcriptState={transcriptState}
-                isTranscriptPanelOpen={isTranscriptPanelOpen}
-                onToggleTranscriptPanel={() => setIsTranscriptPanelOpen((value) => !value)}
+                isTranscriptPanelOpen={transcriptPanel.isOpen}
+                onToggleTranscriptPanel={transcriptPanel.togglePanel}
             />
         </motion.div>
     );

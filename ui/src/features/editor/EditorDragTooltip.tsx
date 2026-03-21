@@ -24,7 +24,7 @@ export function EditorDragTooltip({ dragTooltip, isVisible, scrollOffset }: Edit
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                     >
                         <div className="rounded-xl border border-white/20 bg-background-base/95 px-3 py-1.5 text-[11px] font-mono font-bold tracking-wider text-primary shadow-[0_15px_30px_rgba(0,0,0,0.8)] backdrop-blur-2xl max-w-full min-w-0">
-                            {formatTime(dragTooltip.time)}
+                            {formatTime(dragTooltip.time, { includeFractions: true })}
                         </div>
                     </motion.div>
                 )}
