@@ -17,9 +17,23 @@ export interface SourceAssetPayload {
     kind: 'audio' | 'video';
 }
 
+export interface WaveformBarPayload {
+    start_time: number;
+    end_time: number;
+    amplitude: number;
+}
+
+export interface WaveformLevelPayload {
+    level: number;
+    seconds_per_bar: number;
+    bars_per_tile: number;
+    tile_duration: number;
+}
+
 export interface WaveformPayload {
     duration: number;
-    peaks: number[][];
+    overview_bars: WaveformBarPayload[];
+    levels: WaveformLevelPayload[];
 }
 
 export interface PreparedMediaPayload {
@@ -102,4 +116,17 @@ export interface TranscriptDocumentResponse {
 
 export interface ExportTranscriptResponse {
     path: string;
+}
+
+export interface WaveformMetadataResponse {
+    asset_id: string;
+    waveform: WaveformPayload;
+}
+
+export interface WaveformTileResponse {
+    asset_id: string;
+    level: number;
+    tile_start_time: number;
+    tile_end_time: number;
+    bars: WaveformBarPayload[];
 }

@@ -1,13 +1,15 @@
+import type { RefObject } from 'react';
 import { formatTime, pickTimelineStep } from './utils.ts';
 
 interface EditorTimelineProps {
+    interactionRef?: RefObject<HTMLDivElement | null>;
     duration: number;
     scrollOffset: number;
     viewportWidth: number;
     totalWidth: number;
 }
 
-export function EditorTimeline({ duration, scrollOffset, viewportWidth, totalWidth }: EditorTimelineProps) {
+export function EditorTimeline({ interactionRef, duration, scrollOffset, viewportWidth, totalWidth }: EditorTimelineProps) {
     if (!duration || totalWidth <= 0 || viewportWidth <= 0) {
         return null;
     }
@@ -26,7 +28,7 @@ export function EditorTimeline({ duration, scrollOffset, viewportWidth, totalWid
     }
 
     return (
-        <div className="timeline-container w-full h-10 absolute bottom-0 left-0 bg-background-base/50 backdrop-blur-2xl border-t border-white/[0.04] cursor-ew-resize overflow-hidden z-40">
+        <div ref={interactionRef} className="timeline-container w-full h-10 absolute bottom-0 left-0 bg-background-base/50 backdrop-blur-2xl border-t border-white/[0.04] cursor-ew-resize overflow-hidden z-40">
             {ticks.map((tick) => {
                 const x = (tick / duration) * totalWidth - scrollOffset;
                 return (

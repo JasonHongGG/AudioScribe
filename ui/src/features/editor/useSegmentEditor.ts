@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { RefObject } from 'react';
-import type WaveSurfer from 'wavesurfer.js';
 import type { ActiveTool, AudioSegment, EditorSession, WorkbenchEntry } from '../workbench/models';
 
 
@@ -10,7 +9,6 @@ interface SegmentEditorOptions {
     duration: number;
     currentTool: ActiveTool;
     containerRef: RefObject<HTMLDivElement | null>;
-    wavesurferRef: RefObject<WaveSurfer | null>;
     getTimelineMetrics: () => { viewportWidth: number; scrollLeft: number; totalWidth: number };
     updateEditorSession: (assetId: string, updater: EditorSession | ((editor: EditorSession) => EditorSession)) => void;
 }
@@ -22,7 +20,6 @@ export function useSegmentEditor({
     duration,
     currentTool,
     containerRef,
-    wavesurferRef,
     getTimelineMetrics,
     updateEditorSession,
 }: SegmentEditorOptions) {
@@ -35,7 +32,7 @@ export function useSegmentEditor({
     const [dragTooltip, setDragTooltip] = useState<{ time: number; leftPx: number } | null>(null);
 
     const handleWaveformClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-        if (!wavesurferRef.current || !duration || !containerRef.current) {
+        if (!duration || !containerRef.current) {
             return;
         }
 
@@ -86,12 +83,12 @@ export function useSegmentEditor({
 
         newSegments[clickedSegmentIndex] = { ...segment, included: false };
         updateEditorSession(assetId, (editor) => ({ ...editor, segments: newSegments }));
-    }, [assetId, containerRef, currentTool, duration, entry, getTimelineMetrics, updateEditorSession, wavesurferRef]);
+    }, [assetId, containerRef, currentTool, duration, entry, getTimelineMetrics, updateEditorSession]);
 
     const handleContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         event.preventDefault();
         const segments = entry?.editorSession.segments ?? [];
-        if (!wavesurferRef.current || segments.length <= 1 || !containerRef.current) {
+        if (segments.length <= 1 || !containerRef.current) {
             return;
         }
 
@@ -135,11 +132,11 @@ export function useSegmentEditor({
         };
         newSegments.splice(closestIndex, 2, mergedSegment);
         updateEditorSession(assetId, (editor) => ({ ...editor, segments: newSegments }));
-    }, [assetId, containerRef, duration, entry, getTimelineMetrics, updateEditorSession, wavesurferRef]);
+    }, [assetId, containerRef, duration, entry, getTimelineMetrics, updateEditorSession]);
 
     const handleMouseMoveOverlay = useCallback((event: MouseEvent) => {
         const segments = entry?.editorSession.segments ?? [];
-        if (!draggingBoundary || !wavesurferRef.current || !duration || segments.length === 0 || !containerRef.current) {
+        if (!draggingBoundary || !duration || segments.length === 0 || !containerRef.current) {
             return;
         }
 
@@ -193,7 +190,7 @@ export function useSegmentEditor({
 
         setDragTooltip({ time: tooltipTime, leftPx: tooltipLeftPx });
         updateEditorSession(assetId, (editor) => ({ ...editor, trimRange: nextTrim }));
-    }, [assetId, containerRef, draggingBoundary, duration, entry, getTimelineMetrics, updateEditorSession, wavesurferRef]);
+    }, [assetId, containerRef, draggingBoundary, duration, entry, getTimelineMetrics, updateEditorSession]);
 
     const handleMouseUpOverlay = useCallback(() => {
         setDraggingBoundary(null);

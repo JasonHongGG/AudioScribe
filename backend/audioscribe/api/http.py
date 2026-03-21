@@ -18,10 +18,15 @@ from audioscribe.contracts import (
     ImportAssetResponse,
     StartWorkflowRunRequest,
     TranscriptDocumentResponse,
+    WaveformBarPayload,
+    WaveformLevelPayload,
+    WaveformMetadataResponse,
+    WaveformPayload,
+    WaveformTileResponse,
     WorkflowRunAcceptedResponse,
     WorkflowRunSnapshotResponse,
 )
-from audioscribe.domain.models import AssetRecord, ArtifactRecord, EditorSelection, WorkflowDraft, WorkflowProfile, WorkflowSnapshot
+from audioscribe.domain.models import AssetRecord, ArtifactRecord, EditorSelection, WaveformBar, WaveformLevel, WaveformSummary, WorkflowDraft, WorkflowProfile, WorkflowSnapshot
 from audioscribe.infrastructure.adapters.media_preparation import MediaPreparationAdapter
 from audioscribe.infrastructure.log_stream import log_bus
 from audioscribe.infrastructure.repositories.asset_repository import AssetRepository
@@ -38,10 +43,11 @@ workspace = WorkspacePaths(base_dir=WORKSPACE_BASE_DIR)
 asset_repository = AssetRepository(workspace)
 workflow_repository = WorkflowRepository(workspace)
 runtime_supervisor = RuntimeSupervisor(base_dir=SOURCE_BASE_DIR, workflow_repository=workflow_repository)
+media_preparation = MediaPreparationAdapter(workspace)
 command_handlers = WorkbenchCommandHandlers(
     asset_repository=asset_repository,
     workflow_repository=workflow_repository,
-    media_preparation=MediaPreparationAdapter(workspace),
+    media_preparation=media_preparation,
     runtime_supervisor=runtime_supervisor,
 )
 query_handlers = WorkbenchQueries(workflow_repository=workflow_repository, runtime_supervisor=runtime_supervisor)
@@ -85,12 +91,36 @@ def map_asset(asset: AssetRecord) -> AssetRecordPayload:
         prepared_media={
             "playback_path": asset.prepared_media.playback_path,
             "extraction_path": asset.prepared_media.extraction_path,
-            "waveform": {
-                "duration": asset.prepared_media.waveform.duration,
-                "peaks": asset.prepared_media.waveform.peaks,
-            } if asset.prepared_media.waveform else None,
+            "waveform": map_waveform(asset.prepared_media.waveform),
         },
         imported_at=asset.imported_at,
+    )
+
+
+def map_waveform_bar(bar: WaveformBar) -> WaveformBarPayload:
+    return WaveformBarPayload(
+        start_time=bar.start_time,
+        end_time=bar.end_time,
+        amplitude=bar.amplitude,
+    )
+
+
+def map_waveform_level(level: WaveformLevel) -> WaveformLevelPayload:
+    return WaveformLevelPayload(
+        level=level.level,
+        seconds_per_bar=level.seconds_per_bar,
+        bars_per_tile=level.bars_per_tile,
+        tile_duration=level.tile_duration,
+    )
+
+
+def map_waveform(waveform: WaveformSummary | None) -> WaveformPayload | None:
+    if waveform is None:
+        return None
+    return WaveformPayload(
+        duration=waveform.duration,
+        overview_bars=[map_waveform_bar(bar) for bar in waveform.overview_bars],
+        levels=[map_waveform_level(level) for level in waveform.levels],
     )
 
 
@@ -150,6 +180,45 @@ def create_app() -> FastAPI:
         except Exception as exc:  # noqa: BLE001
             log_bus.write(f"[HTTP] Asset import failed: {exc}")
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get("/assets/{asset_id}/waveform/metadata", response_model=WaveformMetadataResponse)
+    async def get_waveform_metadata(asset_id: str) -> WaveformMetadataResponse:
+        try:
+            asset = await asyncio.to_thread(asset_repository.get, asset_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        waveform = map_waveform(asset.prepared_media.waveform)
+        if waveform is None:
+            raise HTTPException(status_code=404, detail=f"No waveform metadata exists for asset: {asset_id}")
+        return WaveformMetadataResponse(asset_id=asset_id, waveform=waveform)
+
+    @app.get("/assets/{asset_id}/waveform/tiles", response_model=WaveformTileResponse)
+    async def get_waveform_tile(asset_id: str, level: int, start_time: float, end_time: float) -> WaveformTileResponse:
+        try:
+            asset = await asyncio.to_thread(asset_repository.get, asset_id)
+            resolved_level, bars = await asyncio.to_thread(
+                media_preparation.load_waveform_tile,
+                asset.source,
+                asset.prepared_media,
+                level,
+                start_time,
+                end_time,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        tile_start_time = max(0.0, (bars[0].start_time if bars else start_time))
+        tile_end_time = min(asset.prepared_media.waveform.duration if asset.prepared_media.waveform else end_time, (bars[-1].end_time if bars else end_time))
+        return WaveformTileResponse(
+            asset_id=asset_id,
+            level=resolved_level.level,
+            tile_start_time=tile_start_time,
+            tile_end_time=tile_end_time,
+            bars=[map_waveform_bar(bar) for bar in bars],
+        )
 
     @app.post("/workflow-runs", response_model=WorkflowRunAcceptedResponse)
     async def start_workflow_run(req: StartWorkflowRunRequest) -> WorkflowRunAcceptedResponse:

@@ -22,9 +22,23 @@ class SourceAssetPayload(BaseModel):
     kind: SourceKind
 
 
+class WaveformBarPayload(BaseModel):
+    start_time: float
+    end_time: float
+    amplitude: float
+
+
+class WaveformLevelPayload(BaseModel):
+    level: int
+    seconds_per_bar: float
+    bars_per_tile: int
+    tile_duration: float
+
+
 class WaveformPayload(BaseModel):
     duration: float
-    peaks: list[list[float]] = Field(default_factory=list)
+    overview_bars: list[WaveformBarPayload] = Field(default_factory=list)
+    levels: list[WaveformLevelPayload] = Field(default_factory=list)
 
 
 class PreparedMediaPayload(BaseModel):
@@ -38,6 +52,19 @@ class AssetRecordPayload(BaseModel):
     source: SourceAssetPayload
     prepared_media: PreparedMediaPayload
     imported_at: str
+
+
+class WaveformMetadataResponse(BaseModel):
+    asset_id: str
+    waveform: WaveformPayload
+
+
+class WaveformTileResponse(BaseModel):
+    asset_id: str
+    level: int
+    tile_start_time: float
+    tile_end_time: float
+    bars: list[WaveformBarPayload] = Field(default_factory=list)
 
 
 class SelectionSegmentPayload(BaseModel):

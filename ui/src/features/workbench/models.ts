@@ -17,9 +17,23 @@ export type TrimRange = {
     end: number;
 };
 
+export type WaveformBarView = {
+    startTime: number;
+    endTime: number;
+    amplitude: number;
+};
+
+export type WaveformLevelView = {
+    level: number;
+    secondsPerBar: number;
+    barsPerTile: number;
+    tileDuration: number;
+};
+
 export type WaveformView = {
     duration: number;
-    peaks: number[][];
+    overviewBars: WaveformBarView[];
+    levels: WaveformLevelView[];
 };
 
 export type WorkbenchAsset = {

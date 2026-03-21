@@ -19,9 +19,28 @@ def utc_now() -> str:
 
 
 @dataclass(slots=True)
+class WaveformBar:
+    start_time: float
+    end_time: float
+    amplitude: float
+
+
+@dataclass(slots=True)
+class WaveformLevel:
+    level: int
+    seconds_per_bar: float
+    bars_per_tile: int
+
+    @property
+    def tile_duration(self) -> float:
+        return self.seconds_per_bar * self.bars_per_tile
+
+
+@dataclass(slots=True)
 class WaveformSummary:
     duration: float
-    peaks: list[list[float]] = field(default_factory=list)
+    overview_bars: list[WaveformBar] = field(default_factory=list)
+    levels: list[WaveformLevel] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -63,7 +82,24 @@ class AssetRecord:
         if isinstance(waveform_payload, dict):
             waveform = WaveformSummary(
                 duration=float(waveform_payload.get("duration") or 0.0),
-                peaks=[list(channel) for channel in waveform_payload.get("peaks") or []],
+                overview_bars=[
+                    WaveformBar(
+                        start_time=float(bar.get("start_time") or 0.0),
+                        end_time=float(bar.get("end_time") or 0.0),
+                        amplitude=float(bar.get("amplitude") or 0.0),
+                    )
+                    for bar in waveform_payload.get("overview_bars") or []
+                    if isinstance(bar, dict)
+                ],
+                levels=[
+                    WaveformLevel(
+                        level=int(level.get("level") or 0),
+                        seconds_per_bar=float(level.get("seconds_per_bar") or 0.0),
+                        bars_per_tile=int(level.get("bars_per_tile") or 0),
+                    )
+                    for level in waveform_payload.get("levels") or []
+                    if isinstance(level, dict)
+                ],
             )
 
         source_path = str(source_payload.get("path") or "")

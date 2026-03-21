@@ -5,7 +5,7 @@ import { EditorCanvas } from '../../features/editor/EditorCanvas';
 import { EditorHeader } from '../../features/editor/EditorHeader';
 import { TranscriptResultPanel } from '../../features/results/TranscriptResultPanel';
 import { useTranscriptPanelState } from '../../features/results/useTranscriptPanelState';
-import { useWaveSurferController } from '../../features/editor/useWaveSurferController';
+import { useEditorPlaybackController } from '../../features/editor/useEditorPlaybackController';
 import { useSegmentEditor } from '../../features/editor/useSegmentEditor';
 import { useToolStore } from '../../features/workbench/toolStore';
 import { useWorkbenchStore } from '../../features/workbench/workbenchStore';
@@ -34,14 +34,13 @@ export function FileEditor({ assetId }: { assetId: string }) {
     const resolvedEntry = entry ?? undefined;
 
     const transcriptPanel = useTranscriptPanelState({ resetKey: assetId });
-    const controller = useWaveSurferController(resolvedEntry, updateEditorSession);
+    const controller = useEditorPlaybackController(resolvedEntry, updateEditorSession);
     const segmentEditor = useSegmentEditor({
         entry: resolvedEntry,
         assetId,
         duration: controller.duration,
         currentTool: activeTool,
         containerRef: controller.containerRef,
-        wavesurferRef: controller.wavesurferRef,
         getTimelineMetrics: controller.getTimelineMetrics,
         updateEditorSession,
     });

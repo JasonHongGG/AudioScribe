@@ -5,6 +5,8 @@ import type {
     ImportAssetResponse,
     StartWorkflowRunRequest,
     TranscriptDocumentResponse,
+    WaveformMetadataResponse,
+    WaveformTileResponse,
     WorkflowRunAcceptedResponse,
     WorkflowRunSnapshotResponse,
 } from '../features/backend/contracts';
@@ -99,4 +101,25 @@ export async function exportTranscriptDocument(runId: string, destinationPath: s
         signal: AbortSignal.timeout(10_000),
     });
     return response.path;
+}
+
+
+export async function fetchWaveformMetadata(assetId: string): Promise<WaveformMetadataResponse> {
+    return requestJson<WaveformMetadataResponse>(`/assets/${assetId}/waveform/metadata`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+    });
+}
+
+
+export async function fetchWaveformTile(assetId: string, level: number, startTime: number, endTime: number): Promise<WaveformTileResponse> {
+    const params = new URLSearchParams({
+        level: String(level),
+        start_time: String(startTime),
+        end_time: String(endTime),
+    });
+    return requestJson<WaveformTileResponse>(`/assets/${assetId}/waveform/tiles?${params.toString()}`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(15000),
+    });
 }

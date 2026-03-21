@@ -1,15 +1,16 @@
 import { motion } from 'framer-motion';
 import type { useSegmentEditor } from './useSegmentEditor';
-import type { useWaveSurferController } from './useWaveSurferController';
+import type { useEditorPlaybackController } from './useEditorPlaybackController';
 import { EditorDragTooltip } from './EditorDragTooltip';
 import { EditorTimeline } from './EditorTimeline';
 import { EditorWaveformOverlay } from './EditorWaveformOverlay';
+import { WaveformBarCanvas } from './WaveformBarCanvas';
 import type { WorkbenchEntry } from '../workbench/models';
 
 
 interface EditorCanvasProps {
     entry: WorkbenchEntry;
-    controller: ReturnType<typeof useWaveSurferController>;
+    controller: ReturnType<typeof useEditorPlaybackController>;
     segmentEditor: ReturnType<typeof useSegmentEditor>;
 }
 
@@ -38,7 +39,7 @@ export function EditorCanvas({ entry, controller, segmentEditor }: EditorCanvasP
             transition={{ duration: 0.6, ease: 'easeOut', delay: 0.1 }}
         >
             <div className="w-full h-full relative">
-                <div ref={controller.glassCardRef} className="absolute inset-0 rounded-[2.5rem] border border-white/[0.04] overflow-hidden glass-card group/canvas flex flex-col shadow-[0_20px_80px_rgba(0,0,0,0.8)] bg-gradient-to-b from-white/[0.02] to-transparent backdrop-blur-3xl">
+                <div className="absolute inset-0 rounded-[2.5rem] border border-white/[0.04] overflow-hidden glass-card group/canvas flex flex-col shadow-[0_20px_80px_rgba(0,0,0,0.8)] bg-gradient-to-b from-white/[0.02] to-transparent backdrop-blur-3xl">
                     <div className="absolute inset-0 rounded-[2.5rem] border border-white/[0.08] pointer-events-none mix-blend-overlay z-10" />
 
                     {controller.isWaveformLoading && (
@@ -52,9 +53,21 @@ export function EditorCanvas({ entry, controller, segmentEditor }: EditorCanvasP
                         </div>
                     )}
 
-                    <div className="w-full flex-1 cursor-crosshair relative overflow-hidden flex items-center" onClick={segmentEditor.handleWaveformClick} onContextMenu={segmentEditor.handleContextMenu}>
-                        <div ref={controller.containerRef} className="w-full" />
-                        {entry.editorSession.segments.length > 0 && controller.duration > 0 && controller.wavesurferRef.current && controller.wavesurferRef.current.getWrapper() && (
+                    <div ref={controller.waveformInteractionRef} className="w-full flex-1 cursor-crosshair relative overflow-hidden flex items-center" onClick={segmentEditor.handleWaveformClick} onContextMenu={segmentEditor.handleContextMenu}>
+                        <div ref={controller.containerRef} className="absolute inset-0 overflow-x-auto overflow-y-hidden scrollbar-none" onScroll={controller.handleViewportScroll}>
+                            <div style={{ width: `${Math.max(controller.totalWidth, timelineMetrics.viewportWidth)}px`, height: '100%' }} />
+                        </div>
+                        <WaveformBarCanvas
+                            bars={controller.renderBars}
+                            duration={controller.duration}
+                            viewportWidth={timelineMetrics.viewportWidth}
+                            viewportHeight={Math.max(0, controller.viewportHeight)}
+                            scrollOffset={controller.scrollOffset}
+                            totalWidth={timelineMetrics.totalWidth}
+                            trimRange={activeTrim}
+                            currentTime={controller.currentTime}
+                        />
+                        {entry.editorSession.segments.length > 0 && controller.duration > 0 && timelineMetrics.totalWidth > 0 && (
                             <EditorWaveformOverlay
                                 duration={controller.duration}
                                 scrollOffset={controller.scrollOffset}
@@ -68,6 +81,7 @@ export function EditorCanvas({ entry, controller, segmentEditor }: EditorCanvasP
                     </div>
 
                     <EditorTimeline
+                        interactionRef={controller.timelineInteractionRef}
                         duration={controller.duration}
                         scrollOffset={controller.scrollOffset}
                         viewportWidth={timelineMetrics.viewportWidth}

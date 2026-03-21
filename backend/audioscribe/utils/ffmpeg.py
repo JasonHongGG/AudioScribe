@@ -2,11 +2,32 @@ import os
 import json
 import math
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from audioscribe.infrastructure.runtime import windows_subprocess_kwargs
 
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv", ".ts"}
+
+
+@dataclass(frozen=True, slots=True)
+class WaveformLevelSpec:
+    level: int
+    seconds_per_bar: float
+    bars_per_tile: int
+
+    @property
+    def tile_duration(self) -> float:
+        return self.seconds_per_bar * self.bars_per_tile
+
+
+WAVEFORM_LEVEL_SPECS = [
+    WaveformLevelSpec(level=0, seconds_per_bar=12.0, bars_per_tile=256),
+    WaveformLevelSpec(level=1, seconds_per_bar=3.0, bars_per_tile=256),
+    WaveformLevelSpec(level=2, seconds_per_bar=0.75, bars_per_tile=256),
+    WaveformLevelSpec(level=3, seconds_per_bar=0.1875, bars_per_tile=256),
+    WaveformLevelSpec(level=4, seconds_per_bar=0.046875, bars_per_tile=256),
+]
 
 
 def _ffmpeg_executable() -> str:
@@ -57,23 +78,31 @@ def get_audio_duration(audio_path: Path) -> float:
     return float(result.stdout.strip())
 
 
-def generate_waveform_peaks(audio_path: Path, max_length: int = 8000) -> tuple[list[list[float]], float]:
+def generate_waveform_bars(audio_path: Path, start_time: float = 0.0, end_time: float | None = None, bar_count: int = 1024) -> tuple[list[float], float]:
     duration = get_audio_duration(audio_path)
     if duration <= 0:
-        return ([[]], 0.0)
+        return ([], 0.0)
+
+    normalized_start = max(0.0, min(start_time, duration))
+    normalized_end = duration if end_time is None else max(normalized_start, min(end_time, duration))
+    segment_duration = normalized_end - normalized_start
+    if segment_duration <= 0 or bar_count <= 0:
+        return ([], duration)
 
     samples_per_bucket = 128
-    sample_rate = max(128, min(2000, math.ceil((max_length * samples_per_bucket) / duration)))
-    total_frames = max(1, round(duration * sample_rate))
-    peaks = [[0.0] * max_length for _ in range(2)]
+    sample_rate = max(128, min(4000, math.ceil((bar_count * samples_per_bucket) / segment_duration)))
+    total_frames = max(1, round(segment_duration * sample_rate))
+    amplitudes = [0.0] * bar_count
     frame_index = 0
 
     cmd = [
         _ffmpeg_executable(),
         "-v", "error",
+        "-ss", str(normalized_start),
         "-i", str(audio_path),
+        "-t", str(segment_duration),
         "-vn",
-        "-ac", "2",
+        "-ac", "1",
         "-ar", str(sample_rate),
         "-f", "f32le",
         "pipe:1",
@@ -98,16 +127,11 @@ def generate_waveform_peaks(audio_path: Path, max_length: int = 8000) -> tuple[l
             remainder = payload[consumed:]
             samples = memoryview(payload[:consumed]).cast("f")
 
-            for index in range(0, len(samples), 2):
-                bucket = min(max_length - 1, (frame_index * max_length) // total_frames)
-                left = float(samples[index])
-                right = float(samples[index + 1])
-
-                if abs(left) > abs(peaks[0][bucket]):
-                    peaks[0][bucket] = max(-1.0, min(1.0, left))
-                if abs(right) > abs(peaks[1][bucket]):
-                    peaks[1][bucket] = max(-1.0, min(1.0, right))
-
+            for sample in samples:
+                bucket = min(bar_count - 1, (frame_index * bar_count) // total_frames)
+                amplitude = max(0.0, min(1.0, abs(float(sample))))
+                if amplitude > amplitudes[bucket]:
+                    amplitudes[bucket] = amplitude
                 frame_index += 1
     finally:
         _stdout, stderr = proc.communicate()
@@ -115,10 +139,11 @@ def generate_waveform_peaks(audio_path: Path, max_length: int = 8000) -> tuple[l
     if proc.returncode != 0:
         raise RuntimeError(stderr.decode("utf-8", errors="replace").strip() or "ffmpeg waveform extraction failed")
 
-    if peaks[0] == peaks[1]:
-        return ([peaks[0]], duration)
+    return (amplitudes, duration)
 
-    return (peaks, duration)
+
+def build_waveform_levels() -> list[WaveformLevelSpec]:
+    return list(WAVEFORM_LEVEL_SPECS)
 
 
 def extract_audio_chunk(input_path: Path, output_path: Path, start: float, end: float) -> None:

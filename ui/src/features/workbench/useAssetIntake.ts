@@ -1,9 +1,31 @@
 import { useCallback } from 'react';
-import type { AudioSegment, EditorSession, WorkbenchAsset, WorkflowDraft } from './models';
+import type { AudioSegment, EditorSession, WaveformView, WorkbenchAsset, WorkflowDraft } from './models';
 import { useWorkbenchStore } from './workbenchStore';
 import { useSettingsStore } from './settingsStore';
 import { importAsset as importAssetRequest } from '../../services/backendClient';
 import { isSupportedMediaPath } from './fileSupport';
+
+
+function mapWaveform(response: Awaited<ReturnType<typeof importAssetRequest>>['asset']['prepared_media']['waveform']): WaveformView | null {
+    if (!response) {
+        return null;
+    }
+
+    return {
+        duration: response.duration,
+        overviewBars: response.overview_bars.map((bar) => ({
+            startTime: bar.start_time,
+            endTime: bar.end_time,
+            amplitude: bar.amplitude,
+        })),
+        levels: response.levels.map((level) => ({
+            level: level.level,
+            secondsPerBar: level.seconds_per_bar,
+            barsPerTile: level.bars_per_tile,
+            tileDuration: level.tile_duration,
+        })),
+    };
+}
 
 
 function mapImportedAsset(response: Awaited<ReturnType<typeof importAssetRequest>>['asset']): WorkbenchAsset {
@@ -18,10 +40,7 @@ function mapImportedAsset(response: Awaited<ReturnType<typeof importAssetRequest
         media: {
             playbackPath: response.prepared_media.playback_path,
             extractionPath: response.prepared_media.extraction_path ?? null,
-            waveform: response.prepared_media.waveform ? {
-                duration: response.prepared_media.waveform.duration,
-                peaks: response.prepared_media.waveform.peaks,
-            } : null,
+            waveform: mapWaveform(response.prepared_media.waveform),
         },
     };
 }

@@ -93,6 +93,18 @@ class WorkspacePaths:
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / "waveform.json"
 
+    def waveform_cache_dir(self, source_path: Path) -> Path:
+        fingerprint = self._source_fingerprint(source_path)
+        cache_dir = self.media_cache_dir / fingerprint
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir
+
+    def waveform_tile_cache_path(self, source_path: Path, level: int, tile_start_time: float, tile_end_time: float) -> Path:
+        cache_dir = self.waveform_cache_dir(source_path) / "tiles"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        tile_key = f"l{level}-{tile_start_time:.6f}-{tile_end_time:.6f}.json"
+        return cache_dir / tile_key
+
     @staticmethod
     def _source_fingerprint(source_path: Path) -> str:
         stat = source_path.stat()
