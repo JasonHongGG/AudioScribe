@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloud } from 'lucide-react';
-import { useTaskIngestion } from '../../features/tasks/useTaskIngestion';
+import { useAssetIntake } from '../../features/workbench/useAssetIntake';
 
 export function Dropzone() {
     const [isDragging, setIsDragging] = useState(false);
-    const ingestPaths = useTaskIngestion();
+    const ingestPaths = useAssetIntake();
 
     useEffect(() => {
         let isMounted = true;

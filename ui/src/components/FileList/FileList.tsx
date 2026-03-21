@@ -1,30 +1,51 @@
-import { useStore, FileTask } from '../../store';
+import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, CircleDashed, Loader2, Trash2, AlertCircle, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { useBatchTranscription } from '../../features/tasks/useBatchTranscription';
 import { getProviderDescriptor } from '../../features/settings/providerCatalog';
+import { useWorkflowQueue } from '../../features/workbench/useWorkflowQueue';
+import { useSettingsStore } from '../../features/workbench/settingsStore';
+import { useWorkbenchStore } from '../../features/workbench/workbenchStore';
+import type { WorkbenchEntry } from '../../features/workbench/models';
+
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
 }
 
-// Sub-component for individual Task Card
-const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean }) => {
-    const { selectTask, removeTask } = useStore();
+
+function getEntryPhase(entry: WorkbenchEntry): string {
+    return entry.latestRun?.status ?? 'prepared';
+}
+
+
+function getEntryProgress(entry: WorkbenchEntry): number {
+    return entry.latestRun?.progress ?? 0;
+}
+
+
+const EntryCard = ({ entry, isSelected }: { entry: WorkbenchEntry; isSelected: boolean }) => {
+    const selectAsset = useWorkbenchStore((state) => state.selectAsset);
+    const removeAsset = useWorkbenchStore((state) => state.removeAsset);
+    const resetAsset = useWorkbenchStore((state) => state.resetAsset);
+    const phase = getEntryPhase(entry);
+    const progress = getEntryProgress(entry);
 
     const getStatusIcon = () => {
-        switch (task.runtime.phase) {
-            case 'ready':
+        switch (phase) {
+            case 'prepared':
                 return <CircleDashed size={14} className="text-foreground-muted/60" />;
-            case 'preparing-media':
-            case 'processing':
+            case 'queued':
+            case 'running':
                 return <Loader2 size={14} className="text-primary animate-spin" />;
             case 'completed':
                 return <CheckCircle2 size={14} className="text-primary-active drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" />;
             case 'failed':
+            case 'cancelled':
                 return <AlertCircle size={14} className="text-danger drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />;
+            default:
+                return <CircleDashed size={14} className="text-foreground-muted/60" />;
         }
     };
 
@@ -36,66 +57,62 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
             exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => task.runtime.phase !== 'preparing-media' && selectTask(task.id)}
+            onClick={() => selectAsset(entry.asset.assetId)}
             className={cn(
-                "group relative flex flex-col p-3.5 rounded-xl cursor-pointer transition-all duration-300 border overflow-hidden",
+                'group relative flex flex-col p-3.5 rounded-xl cursor-pointer transition-all duration-300 border overflow-hidden',
                 isSelected
-                    ? "bg-gradient-to-br from-primary/10 to-transparent border-primary/30 shadow-[0_4px_20px_rgba(250,204,21,0.15)]"
-                    : "bg-surface border-white/[0.03] hover:border-white/10 hover:bg-surface-hover shadow-sm"
+                    ? 'bg-gradient-to-br from-primary/10 to-transparent border-primary/30 shadow-[0_4px_20px_rgba(250,204,21,0.15)]'
+                    : 'bg-surface border-white/[0.03] hover:border-white/10 hover:bg-surface-hover shadow-sm'
             )}
         >
             <div className="flex items-center gap-3 w-full relative z-10">
-                <div className={cn("shrink-0 transition-colors duration-300", isSelected ? "text-primary" : "")}>{getStatusIcon()}</div>
+                <div className={cn('shrink-0 transition-colors duration-300', isSelected ? 'text-primary' : '')}>{getStatusIcon()}</div>
                 <div className="flex flex-col min-w-0 flex-1">
                     <span className={cn(
-                        "text-sm font-semibold truncate w-full pr-6 transition-colors duration-300 tracking-tight",
-                        isSelected ? "text-foreground text-glow" : "text-foreground/80"
+                        'text-sm font-semibold truncate w-full pr-6 transition-colors duration-300 tracking-tight',
+                        isSelected ? 'text-foreground text-glow' : 'text-foreground/80'
                     )}>
-                        {task.name}
+                        {entry.asset.name}
                     </span>
                     <span className="text-[10px] text-foreground-muted mt-0.5 uppercase tracking-wider font-mono opacity-80">
-                        {task.runtime.phase}
-                        {task.runtime.phase === 'processing' || task.runtime.phase === 'preparing-media'
-                            ? ` ${Math.max(0, Math.min(100, Math.floor(task.runtime.progress)))}%`
-                            : ''}
+                        {phase}
+                        {phase === 'queued' || phase === 'running' ? ` ${Math.max(0, Math.min(100, Math.floor(progress)))}%` : ''}
                     </span>
                 </div>
 
-                {/* Actions (Shows on Hover) */}
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                    {(task.runtime.phase === 'completed' || task.runtime.phase === 'failed') && (
+                    {(phase === 'completed' || phase === 'failed' || phase === 'cancelled') && (
                         <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                useStore.getState().resetTask(task.id);
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                resetAsset(entry.asset.assetId);
                             }}
                             className="p-2 rounded-lg hover:bg-primary/20 hover:text-primary text-foreground-muted transition-all duration-200"
-                            title="Reset Task"
+                            title="Reset Workflow"
                         >
                             <RotateCcw size={14} />
                         </button>
                     )}
                     <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            removeTask(task.id);
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            removeAsset(entry.asset.assetId);
                         }}
                         className="p-2 rounded-lg hover:bg-danger/20 hover:text-danger text-foreground-muted transition-all duration-200"
-                        title="Remove Task"
+                        title="Remove Asset"
                     >
                         <Trash2 size={14} />
                     </button>
                 </div>
             </div>
 
-            {/* Premium Progress Bar */}
-            {task.runtime.progress > 0 && task.runtime.progress < 100 && (
+            {progress > 0 && progress < 100 && (
                 <div className="absolute bottom-0 left-0 h-[2px] bg-background-base/50 w-full overflow-hidden">
                     <motion.div
                         className="h-full bg-gradient-to-r from-primary-active to-primary-light shadow-[0_0_10px_rgba(250,204,21,0.5)]"
                         initial={{ width: 0 }}
-                        animate={{ width: `${task.runtime.progress}%` }}
-                        transition={{ ease: "easeInOut", duration: 0.5 }}
+                        animate={{ width: `${progress}%` }}
+                        transition={{ ease: 'easeInOut', duration: 0.5 }}
                     />
                 </div>
             )}
@@ -103,34 +120,48 @@ const TaskCard = ({ task, isSelected }: { task: FileTask; isSelected: boolean })
     );
 };
 
+
 export function FileList() {
-    const tasks = useStore(state => state.tasks);
-    const selectedTaskId = useStore(state => state.selectedTaskId);
-    const globalProviderId = useStore(state => state.globalProviderId);
-    const setIsGlobalSettingsOpen = useStore(state => state.setIsGlobalSettingsOpen);
-    const { startBatchTranscription } = useBatchTranscription();
+    const assetOrder = useWorkbenchStore((state) => state.order);
+    const assetsById = useWorkbenchStore((state) => state.assetsById);
+    const editorsByAssetId = useWorkbenchStore((state) => state.editorsByAssetId);
+    const draftsByAssetId = useWorkbenchStore((state) => state.draftsByAssetId);
+    const runsByAssetId = useWorkbenchStore((state) => state.runsByAssetId);
+    const selectedAssetId = useWorkbenchStore((state) => state.selectedAssetId);
+    const globalProviderId = useSettingsStore((state) => state.globalProviderId);
+    const setIsGlobalSettingsOpen = useSettingsStore((state) => state.setIsGlobalSettingsOpen);
+    const startWorkflowQueue = useWorkflowQueue();
+    const entries = useMemo(() => assetOrder.map((assetId) => {
+        const asset = assetsById[assetId];
+        const editorSession = editorsByAssetId[assetId];
+        const draft = draftsByAssetId[assetId];
+        if (!asset || !editorSession || !draft) {
+            return null;
+        }
+        return {
+            asset,
+            editorSession,
+            draft,
+            latestRun: runsByAssetId[assetId] ?? null,
+        } satisfies WorkbenchEntry;
+    }).filter((entry): entry is WorkbenchEntry => entry !== null), [assetOrder, assetsById, editorsByAssetId, draftsByAssetId, runsByAssetId]);
     const providerDescriptor = getProviderDescriptor(globalProviderId);
+    const hasReadyEntries = entries.some((entry) => entry.latestRun === null);
 
     return (
         <div className="w-[320px] flex flex-col h-full bg-background-light/40 backdrop-blur-2xl rounded-2xl border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden relative shrink-0">
-            {/* Darker inner shadow to separate it from the main app body */}
             <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_60px_rgba(0,0,0,0.5)] z-0" />
-
-            {/* Ambient top glow */}
             <div className="absolute -top-32 -left-20 w-64 h-64 bg-primary/5 blur-[60px] pointer-events-none rounded-full z-0" />
 
-            {/* Header Info Bar */}
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.05] shrink-0 relative z-10 bg-black/20 backdrop-blur-md">
                 <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-foreground-muted/60 uppercase tracking-[0.2em] font-bold">
-                        Engine Status
-                    </span>
+                    <span className="text-[10px] text-foreground-muted/60 uppercase tracking-[0.2em] font-bold">Engine Status</span>
                     <span className="text-xs text-primary font-medium flex items-center gap-2 drop-shadow-[0_0_8px_rgba(250,204,21,0.2)]">
                         <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                         </span>
-                            {providerDescriptor.name}
+                        {providerDescriptor.name}
                     </span>
                 </div>
                 <button
@@ -142,10 +173,9 @@ export function FileList() {
                 </button>
             </div>
 
-            {/* List Area */}
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 relative scroll-smooth z-10">
-                <AnimatePresence mode='popLayout'>
-                    {tasks.length === 0 ? (
+                <AnimatePresence mode="popLayout">
+                    {entries.length === 0 ? (
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
@@ -158,26 +188,25 @@ export function FileList() {
                             <p className="text-[11px] opacity-40 max-w-[180px] leading-relaxed font-mono">Drag files over the app to begin.</p>
                         </motion.div>
                     ) : (
-                        tasks.map((task) => (
-                            <TaskCard key={task.id} task={task} isSelected={selectedTaskId === task.id} />
+                        entries.map((entry) => (
+                            <EntryCard key={entry.asset.assetId} entry={entry} isSelected={selectedAssetId === entry.asset.assetId} />
                         ))
                     )}
                 </AnimatePresence>
             </div>
 
-            {/* Footer / Batch Action */}
             <div className="p-5 border-t border-white/[0.05] bg-black/30 backdrop-blur-md shrink-0 z-10">
                 <button
-                    onClick={startBatchTranscription}
-                    disabled={!tasks.some((task) => task.runtime.phase === 'ready')}
+                    onClick={() => { void startWorkflowQueue(); }}
+                    disabled={!hasReadyEntries}
                     className={cn(
-                        "w-full py-3.5 rounded-xl flex items-center justify-center font-bold tracking-[0.2em] transition-all duration-300 relative overflow-hidden group uppercase text-[11px]",
-                        tasks.some((task) => task.runtime.phase === 'ready')
-                            ? "bg-primary text-black hover:bg-primary-hover shadow-[0_0_15px_rgba(250,204,21,0.4)] hover:shadow-[0_0_25px_rgba(250,204,21,0.6)] transform hover:-translate-y-0.5"
-                            : "bg-white/5 text-foreground-muted/30 cursor-not-allowed border border-white/5"
+                        'w-full py-3.5 rounded-xl flex items-center justify-center font-bold tracking-[0.2em] transition-all duration-300 relative overflow-hidden group uppercase text-[11px]',
+                        hasReadyEntries
+                            ? 'bg-primary text-black hover:bg-primary-hover shadow-[0_0_15px_rgba(250,204,21,0.4)] hover:shadow-[0_0_25px_rgba(250,204,21,0.6)] transform hover:-translate-y-0.5'
+                            : 'bg-white/5 text-foreground-muted/30 cursor-not-allowed border border-white/5'
                     )}
                 >
-                    {tasks.some((task) => task.runtime.phase === 'ready') && (
+                    {hasReadyEntries && (
                         <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-[150%] group-hover:animate-[shimmer_1.5s_infinite]" />
                     )}
                     <span className="relative z-10 w-full text-center">Commence Batch</span>

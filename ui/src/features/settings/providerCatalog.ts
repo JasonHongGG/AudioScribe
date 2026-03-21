@@ -1,4 +1,4 @@
-import type { ProviderId } from '../tasks/types';
+import type { ProviderId } from '../workbench/models';
 
 export interface ModelDescriptor {
     id: string;

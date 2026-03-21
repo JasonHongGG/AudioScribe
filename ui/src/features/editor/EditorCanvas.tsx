@@ -1,21 +1,23 @@
 import { motion } from 'framer-motion';
-import type { FileTask } from '../tasks/types';
 import type { useSegmentEditor } from './useSegmentEditor';
 import type { useWaveSurferController } from './useWaveSurferController';
 import { EditorDragTooltip } from './EditorDragTooltip';
 import { EditorTimeline } from './EditorTimeline';
 import { EditorWaveformOverlay } from './EditorWaveformOverlay';
+import type { WorkbenchEntry } from '../workbench/models';
+
 
 interface EditorCanvasProps {
-    task: FileTask;
+    entry: WorkbenchEntry;
     controller: ReturnType<typeof useWaveSurferController>;
     segmentEditor: ReturnType<typeof useSegmentEditor>;
 }
 
-export function EditorCanvas({ task, controller, segmentEditor }: EditorCanvasProps) {
+
+export function EditorCanvas({ entry, controller, segmentEditor }: EditorCanvasProps) {
     const timelineMetrics = controller.getTimelineMetrics();
-    const activeTrim = task.editor.trimRange ?? { start: 0, end: controller.duration };
-    const visibleSegments = task.editor.segments
+    const activeTrim = entry.editorSession.trimRange ?? { start: 0, end: controller.duration };
+    const visibleSegments = entry.editorSession.segments
         .map((segment, originalIndex) => ({ segment, originalIndex }))
         .filter(({ segment }) => segment.end > activeTrim.start && segment.start < activeTrim.end);
 
@@ -42,26 +44,17 @@ export function EditorCanvas({ task, controller, segmentEditor }: EditorCanvasPr
                     {controller.isWaveformLoading && (
                         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background-base/70 backdrop-blur-md pointer-events-none">
                             <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-black/30 px-6 py-5 shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
-                                <div className="text-[11px] font-mono uppercase tracking-[0.28em] text-foreground-muted">
-                                    Loading waveform
-                                </div>
+                                <div className="text-[11px] font-mono uppercase tracking-[0.28em] text-foreground-muted">Loading waveform</div>
                                 <div className="h-1.5 w-52 overflow-hidden rounded-full bg-white/10">
-                                    <div
-                                        className="h-full rounded-full bg-primary transition-[width] duration-200 ease-out"
-                                        style={{ width: `${Math.max(8, controller.waveformLoadProgress ?? 18)}%` }}
-                                    />
+                                    <div className="h-full rounded-full bg-primary transition-[width] duration-200 ease-out" style={{ width: `${Math.max(8, controller.waveformLoadProgress ?? 18)}%` }} />
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <div
-                        className="w-full flex-1 cursor-crosshair relative overflow-hidden flex items-center"
-                        onClick={segmentEditor.handleWaveformClick}
-                        onContextMenu={segmentEditor.handleContextMenu}
-                    >
+                    <div className="w-full flex-1 cursor-crosshair relative overflow-hidden flex items-center" onClick={segmentEditor.handleWaveformClick} onContextMenu={segmentEditor.handleContextMenu}>
                         <div ref={controller.containerRef} className="w-full" />
-                        {task.editor.segments.length > 0 && controller.duration > 0 && controller.wavesurferRef.current && controller.wavesurferRef.current.getWrapper() && (
+                        {entry.editorSession.segments.length > 0 && controller.duration > 0 && controller.wavesurferRef.current && controller.wavesurferRef.current.getWrapper() && (
                             <EditorWaveformOverlay
                                 duration={controller.duration}
                                 scrollOffset={controller.scrollOffset}
@@ -82,11 +75,7 @@ export function EditorCanvas({ task, controller, segmentEditor }: EditorCanvasPr
                     />
                 </div>
 
-                <EditorDragTooltip
-                    dragTooltip={segmentEditor.dragTooltip}
-                    isVisible={segmentEditor.draggingBoundary !== null}
-                    scrollOffset={controller.scrollOffset}
-                />
+                <EditorDragTooltip dragTooltip={segmentEditor.dragTooltip} isVisible={segmentEditor.draggingBoundary !== null} scrollOffset={controller.scrollOffset} />
             </div>
         </motion.div>
     );

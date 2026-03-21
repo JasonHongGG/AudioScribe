@@ -4,11 +4,19 @@ from pathlib import Path
 
 
 @dataclass(slots=True)
-class JobPaths:
-    job_id: str
+class AssetPaths:
+    asset_id: str
     root_dir: Path
-    result_file: Path
-    progress_file: Path
+    asset_file: Path
+
+
+@dataclass(slots=True)
+class WorkflowPaths:
+    run_id: str
+    root_dir: Path
+    workflow_file: Path
+    snapshot_file: Path
+    events_file: Path
     transcript_file: Path
     work_dir: Path
 
@@ -17,34 +25,61 @@ class JobPaths:
 class WorkspacePaths:
     base_dir: Path
     root_dir: Path = field(init=False)
-    jobs_dir: Path = field(init=False)
+    assets_dir: Path = field(init=False)
+    workflows_dir: Path = field(init=False)
     media_cache_dir: Path = field(init=False)
 
     def __post_init__(self) -> None:
         self.root_dir = self.base_dir / "tmp"
-        self.jobs_dir = self.root_dir / "jobs"
+        self.assets_dir = self.root_dir / "assets"
+        self.workflows_dir = self.root_dir / "workflows"
         self.media_cache_dir = self.root_dir / "media-cache"
-        self.jobs_dir.mkdir(parents=True, exist_ok=True)
+        self.assets_dir.mkdir(parents=True, exist_ok=True)
+        self.workflows_dir.mkdir(parents=True, exist_ok=True)
         self.media_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def create_job_paths(self, job_id: str) -> JobPaths:
-        root_dir = self.jobs_dir / job_id
+    def create_asset_paths(self, asset_id: str) -> AssetPaths:
+        root_dir = self.assets_dir / asset_id
         root_dir.mkdir(parents=True, exist_ok=True)
-        output_dir = root_dir / "outputs"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        return AssetPaths(asset_id=asset_id, root_dir=root_dir, asset_file=root_dir / "asset.json")
+
+    def asset_paths(self, asset_id: str) -> AssetPaths:
+        root_dir = self.assets_dir / asset_id
+        return AssetPaths(asset_id=asset_id, root_dir=root_dir, asset_file=root_dir / "asset.json")
+
+    def create_workflow_paths(self, run_id: str) -> WorkflowPaths:
+        root_dir = self.workflows_dir / run_id
+        root_dir.mkdir(parents=True, exist_ok=True)
+        outputs_dir = root_dir / "outputs"
+        outputs_dir.mkdir(parents=True, exist_ok=True)
         work_dir = root_dir / "work"
         work_dir.mkdir(parents=True, exist_ok=True)
-        return JobPaths(
-            job_id=job_id,
+        return WorkflowPaths(
+            run_id=run_id,
             root_dir=root_dir,
-            result_file=root_dir / "result.json",
-            progress_file=root_dir / "progress.json",
-            transcript_file=output_dir / "transcript.txt",
+            workflow_file=root_dir / "workflow.json",
+            snapshot_file=root_dir / "snapshot.json",
+            events_file=root_dir / "events.ndjson",
+            transcript_file=outputs_dir / "transcript.txt",
             work_dir=work_dir,
         )
 
-    def iter_job_dirs(self) -> list[Path]:
-        return [path for path in self.jobs_dir.iterdir() if path.is_dir()]
+    def workflow_paths(self, run_id: str) -> WorkflowPaths:
+        root_dir = self.workflows_dir / run_id
+        outputs_dir = root_dir / "outputs"
+        work_dir = root_dir / "work"
+        return WorkflowPaths(
+            run_id=run_id,
+            root_dir=root_dir,
+            workflow_file=root_dir / "workflow.json",
+            snapshot_file=root_dir / "snapshot.json",
+            events_file=root_dir / "events.ndjson",
+            transcript_file=outputs_dir / "transcript.txt",
+            work_dir=work_dir,
+        )
+
+    def iter_workflow_dirs(self) -> list[Path]:
+        return [path for path in self.workflows_dir.iterdir() if path.is_dir()]
 
     def media_cache_path(self, source_path: Path) -> Path:
         fingerprint = self._source_fingerprint(source_path)

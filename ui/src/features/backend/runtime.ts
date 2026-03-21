@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { BackendRuntimeInfo } from './contracts';
-import { api, configureApiClient } from '../../services/api';
+import { checkHealth, configureBackendClient } from '../../services/backendClient';
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -20,9 +20,9 @@ async function resolveBackendRuntime(): Promise<BackendRuntimeInfo> {
 
 export async function ensureBackendReady(timeoutMs = 45000): Promise<BackendRuntimeInfo> {
     const runtime = await resolveBackendRuntime();
-    configureApiClient(runtime);
+    configureBackendClient(runtime);
 
-    const initialProbe = await api.checkHealth(runtime.endpoint);
+    const initialProbe = await checkHealth(runtime.endpoint);
     if (initialProbe.ok) {
         return runtime;
     }
@@ -30,7 +30,7 @@ export async function ensureBackendReady(timeoutMs = 45000): Promise<BackendRunt
     const startedAt = Date.now();
     let lastError = initialProbe.error;
     while (Date.now() - startedAt < timeoutMs) {
-        const probe = await api.checkHealth(runtime.endpoint);
+        const probe = await checkHealth(runtime.endpoint);
         if (probe.ok) {
             return runtime;
         }

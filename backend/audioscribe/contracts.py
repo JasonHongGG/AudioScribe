@@ -4,6 +4,10 @@ from pydantic import BaseModel, Field
 
 
 ProviderId = Literal["faster-whisper", "qwen3-asr"]
+SourceKind = Literal["audio", "video"]
+ArtifactKind = Literal["transcript"]
+WorkflowCapability = Literal["transcription"]
+WorkflowStatus = Literal["draft", "prepared", "queued", "running", "completed", "failed", "cancelled"]
 
 
 class HealthResponse(BaseModel):
@@ -12,8 +16,10 @@ class HealthResponse(BaseModel):
     endpoint: str
 
 
-class ExtractMediaRequest(BaseModel):
-    source_path: str
+class SourceAssetPayload(BaseModel):
+    path: str
+    name: str
+    kind: SourceKind
 
 
 class WaveformPayload(BaseModel):
@@ -21,19 +27,20 @@ class WaveformPayload(BaseModel):
     peaks: list[list[float]] = Field(default_factory=list)
 
 
-class ExtractMediaResponse(BaseModel):
-    status: Literal["ready", "error"]
-    media_path: str | None = None
+class PreparedMediaPayload(BaseModel):
+    playback_path: str
+    extraction_path: str | None = None
     waveform: WaveformPayload | None = None
-    error: str | None = None
 
 
-class TranscriptionOptionsPayload(BaseModel):
-    provider_id: ProviderId
-    model_id: str
+class AssetRecordPayload(BaseModel):
+    asset_id: str
+    source: SourceAssetPayload
+    prepared_media: PreparedMediaPayload
+    imported_at: str
 
 
-class EditorSegmentPayload(BaseModel):
+class SelectionSegmentPayload(BaseModel):
     start: float
     end: float
     included: bool = True
@@ -42,27 +49,69 @@ class EditorSegmentPayload(BaseModel):
 class EditorSelectionPayload(BaseModel):
     trim_start: float | None = None
     trim_end: float | None = None
-    segments: list[EditorSegmentPayload] = Field(default_factory=list)
+    segments: list[SelectionSegmentPayload] = Field(default_factory=list)
 
 
-class StartTranscriptionRequest(BaseModel):
+class WorkflowProfilePayload(BaseModel):
+    capability: WorkflowCapability
+    provider_id: ProviderId
+    model_id: str
+
+
+class WorkflowDraftPayload(BaseModel):
+    asset_id: str
+    selection: EditorSelectionPayload
+    profile: WorkflowProfilePayload
+
+
+class ArtifactRecordPayload(BaseModel):
+    artifact_id: str
+    kind: ArtifactKind
+    path: str
+    created_at: str
+
+
+class ImportAssetRequest(BaseModel):
     source_path: str
-    media_path: str | None = None
-    options: TranscriptionOptionsPayload
-    editor: EditorSelectionPayload | None = None
 
 
-class JobAcceptedResponse(BaseModel):
+class ImportAssetResponse(BaseModel):
+    asset: AssetRecordPayload
+    editor_session: EditorSelectionPayload
+
+
+class StartWorkflowRunRequest(BaseModel):
+    asset_id: str
+    draft: WorkflowDraftPayload
+
+
+class WorkflowRunSnapshotResponse(BaseModel):
+    run_id: str
+    asset_id: str
+    asset_name: str
+    capability: WorkflowCapability
+    status: WorkflowStatus
+    progress: int
+    created_at: str
+    updated_at: str
+    error_message: str | None = None
+    artifact: ArtifactRecordPayload | None = None
+
+
+class WorkflowRunAcceptedResponse(BaseModel):
     status: Literal["accepted"]
-    job_id: str
-    task_name: str
+    snapshot: WorkflowRunSnapshotResponse
 
 
-class JobStatusResponse(BaseModel):
-    status: Literal["running", "success", "error"]
-    job_id: str
-    task_name: str
-    progress: int | None = None
-    transcript_path: str | None = None
-    error: str | None = None
-    details: str | None = None
+class TranscriptDocumentResponse(BaseModel):
+    run_id: str
+    path: str
+    content: str
+
+
+class ExportTranscriptRequest(BaseModel):
+    destination_path: str
+
+
+class ExportTranscriptResponse(BaseModel):
+    path: str

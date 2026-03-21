@@ -1,4 +1,4 @@
-import type { ProviderId } from '../tasks/types';
+import type { ProviderId } from '../workbench/models';
 
 export interface BackendRuntimeInfo {
     endpoint: string;
@@ -11,14 +11,28 @@ export interface HealthResponse {
     endpoint: string;
 }
 
-export interface ExtractMediaResponse {
-    status: 'ready' | 'error';
-    media_path?: string | null;
-    waveform?: {
-        duration: number;
-        peaks: number[][];
-    } | null;
-    error?: string | null;
+export interface SourceAssetPayload {
+    path: string;
+    name: string;
+    kind: 'audio' | 'video';
+}
+
+export interface WaveformPayload {
+    duration: number;
+    peaks: number[][];
+}
+
+export interface PreparedMediaPayload {
+    playback_path: string;
+    extraction_path?: string | null;
+    waveform?: WaveformPayload | null;
+}
+
+export interface AssetRecordPayload {
+    asset_id: string;
+    source: SourceAssetPayload;
+    prepared_media: PreparedMediaPayload;
+    imported_at: string;
 }
 
 export interface EditorSegmentPayload {
@@ -33,28 +47,59 @@ export interface EditorSelectionPayload {
     segments: EditorSegmentPayload[];
 }
 
-export interface StartTranscriptionRequest {
-    source_path: string;
-    media_path: string | null;
-    options: {
-        provider_id: ProviderId;
-        model_id: string;
-    };
-    editor: EditorSelectionPayload | null;
+export interface WorkflowProfilePayload {
+    capability: 'transcription';
+    provider_id: ProviderId;
+    model_id: string;
 }
 
-export interface JobAcceptedResponse {
+export interface WorkflowDraftPayload {
+    asset_id: string;
+    selection: EditorSelectionPayload;
+    profile: WorkflowProfilePayload;
+}
+
+export interface ArtifactRecordPayload {
+    artifact_id: string;
+    kind: 'transcript';
+    path: string;
+    created_at: string;
+}
+
+export interface ImportAssetResponse {
+    asset: AssetRecordPayload;
+    editor_session: EditorSelectionPayload;
+}
+
+export interface StartWorkflowRunRequest {
+    asset_id: string;
+    draft: WorkflowDraftPayload;
+}
+
+export interface WorkflowRunSnapshotResponse {
+    run_id: string;
+    asset_id: string;
+    asset_name: string;
+    capability: 'transcription';
+    status: 'draft' | 'prepared' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    progress: number;
+    created_at: string;
+    updated_at: string;
+    error_message?: string | null;
+    artifact?: ArtifactRecordPayload | null;
+}
+
+export interface WorkflowRunAcceptedResponse {
     status: 'accepted';
-    job_id: string;
-    task_name: string;
+    snapshot: WorkflowRunSnapshotResponse;
 }
 
-export interface JobStatusResponse {
-    status: 'running' | 'success' | 'error';
-    job_id: string;
-    task_name: string;
-    progress?: number | null;
-    transcript_path?: string | null;
-    error?: string | null;
-    details?: string | null;
+export interface TranscriptDocumentResponse {
+    run_id: string;
+    path: string;
+    content: string;
+}
+
+export interface ExportTranscriptResponse {
+    path: string;
 }

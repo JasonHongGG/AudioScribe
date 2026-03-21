@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { CheckSquare, Scissors, XSquare } from 'lucide-react';
-import { ActiveTool } from '../tasks/types';
+import type { ActiveTool } from '../workbench/models';
 import { cn } from './utils.ts';
 
 function ToolButton({ id, activeId, onClick, icon, label, color }: { id: ActiveTool; activeId: ActiveTool; onClick: () => void; icon: ReactNode; label: string; color?: string }) {

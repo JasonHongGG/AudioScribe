@@ -1,21 +1,27 @@
 import { invoke } from '@tauri-apps/api/core';
+import { exportTranscriptDocument as exportTranscript, loadTranscriptDocument as loadTranscript } from '../../services/backendClient';
+
 
 export interface TranscriptDocument {
     path: string;
     content: string;
 }
 
-export async function loadTranscriptDocument(path: string): Promise<TranscriptDocument> {
-    return await invoke<TranscriptDocument>('load_transcript_document', { path });
+
+export async function loadTranscriptDocument(runId: string): Promise<TranscriptDocument> {
+    const document = await loadTranscript(runId);
+    return {
+        path: document.path,
+        content: document.content,
+    };
 }
+
 
 export async function revealTranscriptDocument(path: string): Promise<void> {
-    await invoke('reveal_transcript_document', { path });
+    await invoke('reveal_path', { path });
 }
 
-export async function exportTranscriptDocument(sourcePath: string, destinationPath: string): Promise<string> {
-    return await invoke<string>('export_transcript_document', {
-        sourcePath,
-        destinationPath,
-    });
+
+export async function exportTranscriptDocument(runId: string, destinationPath: string): Promise<string> {
+    return await exportTranscript(runId, destinationPath);
 }

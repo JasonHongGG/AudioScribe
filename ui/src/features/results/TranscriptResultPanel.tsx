@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { save } from '@tauri-apps/plugin-dialog';
 import { AlertCircle, FileOutput, FolderOpen, Loader2, ScrollText, X } from 'lucide-react';
-import type { FileTask } from '../tasks/types';
+import type { WorkbenchEntry } from '../workbench/models';
 import {
     exportTranscriptDocument,
     loadTranscriptDocument,
@@ -10,33 +10,37 @@ import {
     type TranscriptDocument,
 } from './transcript';
 
+
 interface TranscriptResultPanelProps {
-    task: FileTask;
+    entry: WorkbenchEntry;
     isOpen: boolean;
     onClose: () => void;
 }
 
-function filenameFromTask(task: FileTask): string {
-    const sourceName = task.name.replace(/\.[^.]+$/, '');
+
+function filenameFromEntry(entry: WorkbenchEntry): string {
+    const sourceName = entry.asset.name.replace(/\.[^.]+$/, '');
     return `${sourceName}.txt`;
 }
 
-export function TranscriptResultPanel({ task, isOpen, onClose }: TranscriptResultPanelProps) {
-    const transcriptPath = task.result?.transcriptPath ?? null;
+
+export function TranscriptResultPanel({ entry, isOpen, onClose }: TranscriptResultPanelProps) {
+    const transcriptPath = entry.latestRun?.artifact?.path ?? null;
+    const runId = entry.latestRun?.runId ?? null;
     const [document, setDocument] = useState<TranscriptDocument | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [isExporting, setIsExporting] = useState(false);
 
-    const canLoadTranscript = task.runtime.phase === 'completed' && !!transcriptPath;
+    const canLoadTranscript = entry.latestRun?.status === 'completed' && !!runId;
 
     useEffect(() => {
         let cancelled = false;
         let intervalId: number | undefined;
 
         async function readTranscript(showLoader: boolean) {
-            if (!isOpen || !canLoadTranscript || !transcriptPath) {
+            if (!isOpen || !canLoadTranscript || !runId) {
                 setDocument(null);
                 setError(null);
                 setIsLoading(false);
@@ -49,7 +53,7 @@ export function TranscriptResultPanel({ task, isOpen, onClose }: TranscriptResul
             setError(null);
 
             try {
-                const nextDocument = await loadTranscriptDocument(transcriptPath);
+                const nextDocument = await loadTranscriptDocument(runId);
                 if (!cancelled) {
                     setDocument((current) => {
                         if (current?.path === nextDocument.path && current.content === nextDocument.content) {
@@ -72,7 +76,7 @@ export function TranscriptResultPanel({ task, isOpen, onClose }: TranscriptResul
 
         void readTranscript(true);
 
-        if (isOpen && canLoadTranscript && transcriptPath) {
+        if (isOpen && canLoadTranscript && runId) {
             intervalId = window.setInterval(() => {
                 void readTranscript(false);
             }, 1500);
@@ -84,7 +88,7 @@ export function TranscriptResultPanel({ task, isOpen, onClose }: TranscriptResul
                 window.clearInterval(intervalId);
             }
         };
-    }, [isOpen, canLoadTranscript, transcriptPath]);
+    }, [isOpen, canLoadTranscript, runId]);
 
     const handleReveal = async () => {
         if (!transcriptPath) {
@@ -99,13 +103,13 @@ export function TranscriptResultPanel({ task, isOpen, onClose }: TranscriptResul
     };
 
     const handleExport = async () => {
-        if (!transcriptPath) {
+        if (!runId) {
             return;
         }
 
         setActionError(null);
         const destination = await save({
-            defaultPath: filenameFromTask(task),
+            defaultPath: filenameFromEntry(entry),
             filters: [{ name: 'Text', extensions: ['txt'] }],
         });
 
@@ -115,7 +119,7 @@ export function TranscriptResultPanel({ task, isOpen, onClose }: TranscriptResul
 
         setIsExporting(true);
         try {
-            await exportTranscriptDocument(transcriptPath, destination);
+            await exportTranscriptDocument(runId, destination);
         } catch (exportError) {
             setActionError(exportError instanceof Error ? exportError.message : String(exportError));
         } finally {
@@ -124,25 +128,25 @@ export function TranscriptResultPanel({ task, isOpen, onClose }: TranscriptResul
     };
 
     const renderBody = () => {
-        if (task.runtime.phase === 'failed') {
+        if (entry.latestRun?.status === 'failed' || entry.latestRun?.status === 'cancelled') {
             return (
                 <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4 text-foreground-muted">
                     <AlertCircle size={28} className="text-danger" />
                     <div className="space-y-2">
                         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground">Transcription failed</div>
-                        <p className="text-sm leading-relaxed">{task.runtime.errorMessage ?? 'The audio engine did not produce a transcript for this task.'}</p>
+                        <p className="text-sm leading-relaxed">{entry.latestRun?.errorMessage ?? 'The audio engine did not produce a transcript for this asset.'}</p>
                     </div>
                 </div>
             );
         }
 
-        if (task.runtime.phase !== 'completed') {
+        if (entry.latestRun?.status !== 'completed') {
             return (
                 <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4 text-foreground-muted">
                     <ScrollText size={28} className="text-primary/70" />
                     <div className="space-y-2">
                         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground">Transcript result</div>
-                        <p className="text-sm leading-relaxed">Run a transcription and the generated transcript will appear here.</p>
+                        <p className="text-sm leading-relaxed">Run a workflow and the generated transcript will appear here.</p>
                     </div>
                 </div>
             );
@@ -217,7 +221,7 @@ export function TranscriptResultPanel({ task, isOpen, onClose }: TranscriptResul
                                         </button>
                                         <button
                                             onClick={() => { void handleExport(); }}
-                                            disabled={!transcriptPath || isExporting}
+                                            disabled={!runId || isExporting}
                                             className="glass-button p-2 text-foreground-muted hover:text-primary disabled:opacity-40 disabled:cursor-not-allowed"
                                             title="Export transcript copy"
                                         >

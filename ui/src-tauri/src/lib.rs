@@ -37,13 +37,6 @@ struct BackendLaunchConfig {
 }
 
 
-#[derive(serde::Serialize)]
-struct TranscriptDocument {
-    path: String,
-    content: String,
-}
-
-
 #[derive(Default)]
 struct BackendState {
     child: Mutex<Option<Child>>,
@@ -307,18 +300,6 @@ fn stop_backend(state: &BackendState) {
 }
 
 
-fn transcript_path(path: &str) -> Result<PathBuf, String> {
-    let candidate = PathBuf::from(path);
-    if !candidate.exists() {
-        return Err(format!("Transcript file does not exist: {path}"));
-    }
-    if !candidate.is_file() {
-        return Err(format!("Transcript path is not a file: {path}"));
-    }
-    Ok(candidate)
-}
-
-
 fn spawn_external(command: &mut Command) -> Result<(), String> {
     command
         .spawn()
@@ -345,33 +326,6 @@ fn reveal_path_in_system(path: &Path) -> Result<(), String> {
     let mut command = Command::new("xdg-open");
     command.arg(parent);
     spawn_external(&mut command)
-}
-
-
-fn unique_destination_path(destination: &Path) -> PathBuf {
-    if !destination.exists() {
-        return destination.to_path_buf();
-    }
-
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    let stem = destination
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("transcript");
-    let extension = destination.extension().and_then(|value| value.to_str());
-
-    for index in 1..=9_999 {
-        let filename = match extension {
-            Some(extension) if !extension.is_empty() => format!("{stem}{index}.{extension}"),
-            _ => format!("{stem}{index}"),
-        };
-        let candidate = parent.join(filename);
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-
-    destination.to_path_buf()
 }
 
 
@@ -409,39 +363,12 @@ fn ensure_backend_started(app: AppHandle, state: State<'_, BackendState>) -> Res
 
 
 #[tauri::command]
-fn load_transcript_document(path: String) -> Result<TranscriptDocument, String> {
-    let transcript = transcript_path(&path)?;
-    let content = fs::read_to_string(&transcript)
-        .map_err(|error| format!("Failed to read transcript file: {error}"))?;
-
-    Ok(TranscriptDocument {
-        path: transcript.to_string_lossy().into_owned(),
-        content,
-    })
-}
-
-
-#[tauri::command]
-fn export_transcript_document(source_path: String, destination_path: String) -> Result<String, String> {
-    let source = transcript_path(&source_path)?;
-    let destination = unique_destination_path(&PathBuf::from(destination_path));
-
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to create export directory: {error}"))?;
+fn reveal_path(path: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    if !target.exists() {
+        return Err(format!("Path does not exist: {path}"));
     }
-
-    fs::copy(&source, &destination)
-        .map_err(|error| format!("Failed to export transcript file: {error}"))?;
-
-    Ok(destination.to_string_lossy().into_owned())
-}
-
-
-#[tauri::command]
-fn reveal_transcript_document(path: String) -> Result<(), String> {
-    let transcript = transcript_path(&path)?;
-    reveal_path_in_system(&transcript)
+    reveal_path_in_system(&target)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -452,9 +379,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![
             ensure_backend_started,
-            load_transcript_document,
-            export_transcript_document,
-            reveal_transcript_document
+            reveal_path
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -8,14 +8,14 @@ import { FileList } from './components/FileList/FileList';
 import { GlobalSettingsModal } from './components/GlobalSettingsModal/GlobalSettingsModal';
 import { ImportPanel } from './components/ImportPanel/ImportPanel';
 import { useBackendRuntime } from './features/backend/useBackendRuntime';
-import { SUPPORTED_MEDIA_EXTENSIONS } from './features/tasks/taskFactory';
-import { useTaskIngestion } from './features/tasks/useTaskIngestion';
-import { useStore } from './store';
+import { SUPPORTED_MEDIA_EXTENSIONS } from './features/workbench/fileSupport';
+import { useAssetIntake } from './features/workbench/useAssetIntake';
+import { useWorkbenchStore } from './features/workbench/workbenchStore';
 
 function App() {
-  const tasks = useStore((state) => state.tasks);
-  const selectedTaskId = useStore((state) => state.selectedTaskId);
-  const ingestPaths = useTaskIngestion();
+  const assetIds = useWorkbenchStore((state) => state.order);
+  const selectedAssetId = useWorkbenchStore((state) => state.selectedAssetId);
+  const ingestPaths = useAssetIntake();
   const backendRuntime = useBackendRuntime();
 
   const handleFileUpload = async () => {
@@ -78,7 +78,7 @@ function App() {
                 Retry Startup
               </button>
             </motion.div>
-          ) : tasks.length === 0 ? (
+          ) : assetIds.length === 0 ? (
             <ImportPanel key="empty-state" onImport={handleFileUpload} />
           ) : (
             <motion.div
@@ -88,8 +88,8 @@ function App() {
               transition={{ duration: 0.5 }}
               className="flex-1 w-full h-full flex flex-col min-w-0 min-h-0 overflow-hidden relative"
             >
-              {selectedTaskId ? (
-                <FileEditor taskId={selectedTaskId} />
+              {selectedAssetId ? (
+                <FileEditor assetId={selectedAssetId} />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-foreground-muted font-mono tracking-widest uppercase text-xs opacity-50">
                   Select a track to begin

@@ -1,40 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import type { FileTask, TrimRange, AudioSegment } from '../tasks/types';
+import type { AudioSegment, EditorSession, TrimRange, WorkbenchEntry } from '../workbench/models';
+
 
 const MAX_ZOOM = 180;
-const MAX_WAVEFORM_CACHE_ENTRIES = 8;
 
-type WaveformCacheEntry = {
-    peaks: Array<Float32Array | number[]>;
-    duration: number;
-};
+type UpdateEditorSession = (assetId: string, updater: EditorSession | ((editor: EditorSession) => EditorSession)) => void;
 
-type UpdateTask = (id: string, updater: FileTask | ((task: FileTask) => FileTask)) => void;
 
-const waveformCache = new Map<string, WaveformCacheEntry>();
-
-function rememberWaveform(audioPath: string, entry: WaveformCacheEntry) {
-    if (waveformCache.has(audioPath)) {
-        waveformCache.delete(audioPath);
-    }
-
-    waveformCache.set(audioPath, entry);
-
-    while (waveformCache.size > MAX_WAVEFORM_CACHE_ENTRIES) {
-        const oldestKey = waveformCache.keys().next().value;
-        if (!oldestKey) {
-            break;
-        }
-        waveformCache.delete(oldestKey);
-    }
-}
-
-export function useWaveSurferController(task: FileTask | undefined, updateTask: UpdateTask) {
+export function useWaveSurferController(entry: WorkbenchEntry | undefined, updateEditorSession: UpdateEditorSession) {
     const containerRef = useRef<HTMLDivElement>(null);
     const glassCardRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
+    const latestEntryRef = useRef<WorkbenchEntry | undefined>(entry);
+    const audioReadyRef = useRef(false);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -48,8 +28,12 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
     const [playbackRate, setPlaybackRate] = useState(1);
     const [, setResizeTick] = useState(0);
 
+    useEffect(() => {
+        latestEntryRef.current = entry;
+    }, [entry]);
+
     const applyFitZoom = useCallback((ws: WaveSurfer, audioDuration: number) => {
-        if (audioDuration <= 0) {
+        if (audioDuration <= 0 || !audioReadyRef.current) {
             return;
         }
 
@@ -84,7 +68,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
     }, [duration, zoom]);
 
     useEffect(() => {
-        if (!containerRef.current || !task) {
+        if (!containerRef.current || !entry) {
             return;
         }
 
@@ -94,7 +78,14 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         setScrollOffset(0);
         setIsWaveformLoading(false);
         setWaveformLoadProgress(null);
+        audioReadyRef.current = false;
         wavesurferRef.current?.destroy();
+
+        const assetId = entry.asset.assetId;
+        const audioPath = entry.asset.media.playbackPath;
+        const waveform = entry.asset.media.waveform;
+        const isRawVideo = entry.asset.source.kind === 'video' && !entry.asset.media.extractionPath;
+        let disposed = false;
 
         const ws = WaveSurfer.create({
             container: containerRef.current,
@@ -105,7 +96,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
             height: 200,
             normalize: false,
             interact: false,
-            minPxPerSec: zoom,
+            minPxPerSec: 50,
             hideScrollbar: true,
         });
 
@@ -113,40 +104,29 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
 
         const loadAudio = async () => {
             try {
-                const audioPath = task.media.playbackPath;
-                const waveform = task.media.waveform;
-
                 if (!audioPath) {
                     return;
                 }
 
-                const isRawVideo = task.source.kind === 'video' && !task.media.extractionPath;
                 if (isRawVideo) {
                     return;
                 }
 
                 const audioUrl = convertFileSrc(audioPath);
-                const cachedWaveform = waveformCache.get(audioPath);
 
                 setIsWaveformLoading(true);
-                setWaveformLoadProgress(cachedWaveform ? 100 : null);
+                setWaveformLoadProgress(null);
 
                 if (waveform && waveform.peaks.length > 0 && waveform.duration > 0) {
-                    rememberWaveform(audioPath, {
-                        peaks: waveform.peaks,
-                        duration: waveform.duration,
-                    });
                     await ws.load(audioUrl, waveform.peaks, waveform.duration);
-                    return;
-                }
-
-                if (cachedWaveform) {
-                    await ws.load(audioUrl, cachedWaveform.peaks, cachedWaveform.duration);
                     return;
                 }
 
                 await ws.load(audioUrl);
             } catch (error: unknown) {
+                if (disposed) {
+                    return;
+                }
                 if (error instanceof Error && error.name === 'AbortError') {
                     return;
                 }
@@ -159,12 +139,18 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         void loadAudio();
 
         ws.on('loading', (percent: number) => {
+            if (disposed) {
+                return;
+            }
             setWaveformLoadProgress(percent);
         });
 
         ws.on('ready', () => {
+            if (disposed) {
+                return;
+            }
             const audioDuration = ws.getDuration();
-            const audioPath = task.media.playbackPath;
+            audioReadyRef.current = true;
 
             setDuration(audioDuration);
             setIsWaveformLoading(false);
@@ -174,8 +160,13 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
                 applyFitZoom(ws, audioDuration);
             }
 
+            const latestEntry = latestEntryRef.current;
+            if (!latestEntry || latestEntry.asset.assetId !== assetId) {
+                return;
+            }
+
             const defaultTrim: TrimRange = { start: 0, end: audioDuration };
-            const currentTrim = task.editor.trimRange ?? defaultTrim;
+            const currentTrim = latestEntry.editorSession.trimRange ?? defaultTrim;
             const trimRange: TrimRange = {
                 start: Math.max(0, Math.min(currentTrim.start, audioDuration)),
                 end: Math.max(0, Math.min(currentTrim.end, audioDuration)),
@@ -183,54 +174,31 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
 
             setScrollOffset(0);
 
-            if (task.editor.segments.length === 0) {
+            if (latestEntry.editorSession.segments.length === 0) {
                 const initialSegment: AudioSegment = {
                     id: crypto.randomUUID(),
                     start: trimRange.start,
                     end: trimRange.end,
                     included: true,
                 };
-                updateTask(task.id, (currentTask) => ({
-                    ...currentTask,
-                    editor: {
-                        ...currentTask.editor,
-                        trimRange,
-                        segments: [initialSegment],
-                    },
+                updateEditorSession(assetId, (editor) => ({
+                    ...editor,
+                    trimRange,
+                    segments: [initialSegment],
                 }));
-            } else if (!task.editor.trimRange) {
-                updateTask(task.id, (currentTask) => ({
-                    ...currentTask,
-                    editor: {
-                        ...currentTask.editor,
-                        trimRange,
-                    },
+            } else if (!latestEntry.editorSession.trimRange) {
+                updateEditorSession(assetId, (editor) => ({
+                    ...editor,
+                    trimRange,
                 }));
-            }
-
-            if (audioPath && !waveformCache.has(audioPath) && ws.getDecodedData()) {
-                const scheduleCache = typeof window.requestIdleCallback === 'function'
-                    ? window.requestIdleCallback.bind(window)
-                    : (callback: IdleRequestCallback) => window.setTimeout(() => callback({
-                        didTimeout: false,
-                        timeRemaining: () => 0,
-                    }), 0);
-
-                scheduleCache(() => {
-                    try {
-                        rememberWaveform(audioPath, {
-                            peaks: ws.exportPeaks(),
-                            duration: audioDuration,
-                        });
-                    } catch (error) {
-                        console.warn('Failed to cache waveform peaks', error);
-                    }
-                });
             }
         });
 
         let isUpdatingTime = false;
         ws.on('audioprocess', () => {
+            if (disposed) {
+                return;
+            }
             if (isUpdatingTime) {
                 return;
             }
@@ -242,12 +210,27 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
             });
         });
 
-        ws.on('seeking', () => setCurrentTime(ws.getCurrentTime()));
-        ws.on('play', () => setIsPlaying(true));
-        ws.on('pause', () => setIsPlaying(false));
+        ws.on('seeking', () => {
+            if (!disposed) {
+                setCurrentTime(ws.getCurrentTime());
+            }
+        });
+        ws.on('play', () => {
+            if (!disposed) {
+                setIsPlaying(true);
+            }
+        });
+        ws.on('pause', () => {
+            if (!disposed) {
+                setIsPlaying(false);
+            }
+        });
 
         let isUpdatingScroll = false;
         ws.on('scroll', (_visibleStart, _visibleEnd, scrollLeft) => {
+            if (disposed) {
+                return;
+            }
             if (isUpdatingScroll) {
                 return;
             }
@@ -260,13 +243,17 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         });
 
         ws.on('zoom', () => {
-            setScrollOffset(ws.getScroll());
+            if (!disposed) {
+                setScrollOffset(ws.getScroll());
+            }
         });
 
         return () => {
+            disposed = true;
+            audioReadyRef.current = false;
             ws.destroy();
         };
-    }, [applyFitZoom, task?.id, task?.media.playbackPath, task?.media.extractionPath, task?.media.waveform, task?.source.path, task?.source.kind, updateTask]);
+    }, [applyFitZoom, entry?.asset.assetId, entry?.asset.media.playbackPath, entry?.asset.media.extractionPath, entry?.asset.media.waveform, entry?.asset.source.kind, updateEditorSession]);
 
     useEffect(() => {
         if (!containerRef.current) {
@@ -282,7 +269,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
 
     useEffect(() => {
         const ws = wavesurferRef.current;
-        if (!ws || duration <= 0) {
+        if (!ws || duration <= 0 || !audioReadyRef.current) {
             return;
         }
 
@@ -310,7 +297,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
 
         const handleWheel = (event: WheelEvent) => {
             const ws = wavesurferRef.current;
-            if (!ws) {
+            if (!ws || !audioReadyRef.current) {
                 return;
             }
 
@@ -364,7 +351,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
             }
 
             const ws = wavesurferRef.current;
-            if (!ws) {
+            if (!ws || !audioReadyRef.current) {
                 return;
             }
 
@@ -381,15 +368,7 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
                     event.preventDefault();
                     ws.skip(5);
                     break;
-                case ',':
-                case '<':
-                    event.preventDefault();
-                    ws.skip(-1);
-                    break;
-                case '.':
-                case '>':
-                    event.preventDefault();
-                    ws.skip(1);
+                default:
                     break;
             }
         };
@@ -398,25 +377,45 @@ export function useWaveSurferController(task: FileTask | undefined, updateTask: 
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    const api = useMemo(() => ({
+    const seekTo = useCallback((value: number) => {
+        const ws = wavesurferRef.current;
+        if (!ws || duration <= 0 || !audioReadyRef.current) {
+            return;
+        }
+        ws.seekTo(Math.max(0, Math.min(1, value / duration)));
+    }, [duration]);
+
+    const togglePlay = useCallback(() => {
+        if (!audioReadyRef.current) {
+            return;
+        }
+        wavesurferRef.current?.playPause();
+    }, []);
+
+    const skipBy = useCallback((seconds: number) => {
+        if (!audioReadyRef.current) {
+            return;
+        }
+        wavesurferRef.current?.skip(seconds);
+    }, []);
+
+    return {
         containerRef,
         glassCardRef,
         wavesurferRef,
         isPlaying,
         currentTime,
         duration,
-        isWaveformLoading,
-        waveformLoadProgress,
         volume,
         playbackRate,
         scrollOffset,
+        isWaveformLoading,
+        waveformLoadProgress,
         getTimelineMetrics,
+        seekTo,
+        togglePlay,
+        skipBy,
         setVolume,
         setPlaybackRate,
-        seekTo: (value: number) => wavesurferRef.current?.setTime(value),
-        togglePlay: () => wavesurferRef.current?.playPause(),
-        skipBy: (seconds: number) => wavesurferRef.current?.skip(seconds),
-    }), [currentTime, duration, getTimelineMetrics, isPlaying, isWaveformLoading, scrollOffset, volume, playbackRate, waveformLoadProgress]);
-
-    return api;
+    };
 }

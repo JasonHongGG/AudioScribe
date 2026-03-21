@@ -1,45 +1,61 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useStore } from '../../store';
 import { PlayerDock } from '../../features/editor/PlayerDock';
 import { EditorCanvas } from '../../features/editor/EditorCanvas';
 import { EditorHeader } from '../../features/editor/EditorHeader';
 import { TranscriptResultPanel } from '../../features/results/TranscriptResultPanel';
-import { useActiveToolRef } from '../../features/editor/useActiveToolRef';
 import { useWaveSurferController } from '../../features/editor/useWaveSurferController';
 import { useSegmentEditor } from '../../features/editor/useSegmentEditor';
+import { useToolStore } from '../../features/workbench/toolStore';
+import { useWorkbenchStore } from '../../features/workbench/workbenchStore';
 
-export function FileEditor({ taskId }: { taskId: string }) {
-    const task = useStore((state) => state.tasks.find((item) => item.id === taskId));
-    const updateTask = useStore((state) => state.updateTask);
-    const activeTool = useStore((state) => state.activeToolRef);
-    const setActiveTool = useStore((state) => state.setActiveTool);
 
-    const currentToolRef = useActiveToolRef();
+export function FileEditor({ assetId }: { assetId: string }) {
+    const asset = useWorkbenchStore((state) => state.assetsById[assetId]);
+    const editorSession = useWorkbenchStore((state) => state.editorsByAssetId[assetId]);
+    const draft = useWorkbenchStore((state) => state.draftsByAssetId[assetId]);
+    const latestRun = useWorkbenchStore((state) => state.runsByAssetId[assetId] ?? null);
+    const updateEditorSession = useWorkbenchStore((state) => state.updateEditorSession);
+    const activeTool = useToolStore((state) => state.activeTool);
+    const setActiveTool = useToolStore((state) => state.setActiveTool);
+
+    const entry = useMemo(() => {
+        if (!asset || !editorSession || !draft) {
+            return null;
+        }
+        return {
+            asset,
+            editorSession,
+            draft,
+            latestRun,
+        };
+    }, [asset, editorSession, draft, latestRun]);
+    const resolvedEntry = entry ?? undefined;
+
     const [isTranscriptPanelOpen, setIsTranscriptPanelOpen] = useState(false);
-    const controller = useWaveSurferController(task, updateTask);
+    const controller = useWaveSurferController(resolvedEntry, updateEditorSession);
     const segmentEditor = useSegmentEditor({
-        task,
-        taskId,
+        entry: resolvedEntry,
+        assetId,
         duration: controller.duration,
-        currentToolRef,
+        currentTool: activeTool,
         containerRef: controller.containerRef,
         wavesurferRef: controller.wavesurferRef,
         getTimelineMetrics: controller.getTimelineMetrics,
-        updateTask,
+        updateEditorSession,
     });
 
-    if (!task) {
+    if (!entry) {
         return null;
     }
 
     useEffect(() => {
         setIsTranscriptPanelOpen(false);
-    }, [task.id]);
+    }, [entry.asset.assetId]);
 
-    const transcriptState = task.runtime.phase === 'completed' && task.result?.transcriptPath
+    const transcriptState = entry.latestRun?.status === 'completed' && entry.latestRun.artifact
         ? 'ready'
-        : task.runtime.phase === 'failed'
+        : entry.latestRun?.status === 'failed' || entry.latestRun?.status === 'cancelled'
             ? 'failed'
             : 'idle';
 
@@ -50,12 +66,12 @@ export function FileEditor({ taskId }: { taskId: string }) {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
         >
-            <EditorHeader title={task.name} activeTool={activeTool} onSelectTool={setActiveTool} />
+            <EditorHeader title={entry.asset.name} activeTool={activeTool} onSelectTool={setActiveTool} />
 
-            <EditorCanvas task={task} controller={controller} segmentEditor={segmentEditor} />
+            <EditorCanvas entry={entry} controller={controller} segmentEditor={segmentEditor} />
 
             <TranscriptResultPanel
-                task={task}
+                entry={entry}
                 isOpen={isTranscriptPanelOpen}
                 onClose={() => setIsTranscriptPanelOpen(false)}
             />

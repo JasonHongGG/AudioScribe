@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Settings2, X, Cpu, Globe, Check } from 'lucide-react';
-import { useStore } from '../../store';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { PROVIDERS, getProviderDescriptor } from '../../features/settings/providerCatalog';
+import { useSettingsStore } from '../../features/workbench/settingsStore';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -18,7 +18,7 @@ export function GlobalSettingsModal() {
         setGlobalProviderId,
         globalModelId,
         setGlobalModelId,
-    } = useStore();
+    } = useSettingsStore();
 
     const activeProvider = getProviderDescriptor(globalProviderId);
 

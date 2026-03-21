@@ -3,7 +3,7 @@ from typing import Any
 
 from audioscribe.config import Qwen3AsrConfig
 from audioscribe.stt.base import STTProvider
-from audioscribe.models import TranscriptSegment, TranscriptionResult
+from audioscribe.stt.models import TranscriptSegment, TranscriptionResult
 
 
 class Qwen3AsrSTTProvider(STTProvider):

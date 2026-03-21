@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import type { AudioSegment, TrimRange } from '../tasks/types';
+import type { AudioSegment, TrimRange } from '../workbench/models';
 
 type DragBoundary =
     | { kind: 'segment'; index: number }

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from audioscribe.models import TranscriptionResult
+from audioscribe.stt.models import TranscriptionResult
 
 
 class STTProvider(ABC):

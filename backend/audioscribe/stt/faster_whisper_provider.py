@@ -3,7 +3,7 @@ from typing import Generator
 
 from audioscribe.config import FasterWhisperConfig
 from audioscribe.stt.base import STTProvider
-from audioscribe.models import TranscriptSegment, TranscriptionResult
+from audioscribe.stt.models import TranscriptSegment, TranscriptionResult
 
 
 class FasterWhisperSTTProvider(STTProvider):

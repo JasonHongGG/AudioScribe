@@ -1,28 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { RefObject } from 'react';
 import type WaveSurfer from 'wavesurfer.js';
-import type { AudioSegment, FileTask } from '../tasks/types';
+import type { ActiveTool, AudioSegment, EditorSession, WorkbenchEntry } from '../workbench/models';
+
 
 interface SegmentEditorOptions {
-    task: FileTask | undefined;
-    taskId: string;
+    entry: WorkbenchEntry | undefined;
+    assetId: string;
     duration: number;
-    currentToolRef: RefObject<'split' | 'include' | 'exclude'>;
+    currentTool: ActiveTool;
     containerRef: RefObject<HTMLDivElement | null>;
     wavesurferRef: RefObject<WaveSurfer | null>;
     getTimelineMetrics: () => { viewportWidth: number; scrollLeft: number; totalWidth: number };
-    updateTask: (id: string, updater: FileTask | ((task: FileTask) => FileTask)) => void;
+    updateEditorSession: (assetId: string, updater: EditorSession | ((editor: EditorSession) => EditorSession)) => void;
 }
 
+
 export function useSegmentEditor({
-    task,
-    taskId,
+    entry,
+    assetId,
     duration,
-    currentToolRef,
+    currentTool,
     containerRef,
     wavesurferRef,
     getTimelineMetrics,
-    updateTask,
+    updateEditorSession,
 }: SegmentEditorOptions) {
     const [draggingBoundary, setDraggingBoundary] = useState<
         | { kind: 'segment'; index: number }
@@ -37,7 +39,7 @@ export function useSegmentEditor({
             return;
         }
 
-        const segments = task?.editor.segments ?? [];
+        const segments = entry?.editorSession.segments ?? [];
         if (segments.length === 0) {
             return;
         }
@@ -50,7 +52,7 @@ export function useSegmentEditor({
 
         const xPos = event.clientX - rect.left + scrollLeft;
         const clickTime = (xPos / totalWidth) * duration;
-        const activeTrim = task?.editor.trimRange ?? { start: 0, end: duration };
+        const activeTrim = entry?.editorSession.trimRange ?? { start: 0, end: duration };
         if (clickTime < activeTrim.start || clickTime > activeTrim.end) {
             return;
         }
@@ -63,7 +65,7 @@ export function useSegmentEditor({
         const segment = segments[clickedSegmentIndex];
         const newSegments = [...segments];
 
-        if (currentToolRef.current === 'split') {
+        if (currentTool === 'split') {
             const leftSegment: AudioSegment = { ...segment, end: clickTime };
             const rightSegment: AudioSegment = {
                 id: crypto.randomUUID(),
@@ -72,23 +74,23 @@ export function useSegmentEditor({
                 included: segment.included,
             };
             newSegments.splice(clickedSegmentIndex, 1, leftSegment, rightSegment);
-            updateTask(taskId, (currentTask) => ({ ...currentTask, editor: { ...currentTask.editor, segments: newSegments } }));
+            updateEditorSession(assetId, (editor) => ({ ...editor, segments: newSegments }));
             return;
         }
 
-        if (currentToolRef.current === 'include') {
+        if (currentTool === 'include') {
             newSegments[clickedSegmentIndex] = { ...segment, included: true };
-            updateTask(taskId, (currentTask) => ({ ...currentTask, editor: { ...currentTask.editor, segments: newSegments } }));
+            updateEditorSession(assetId, (editor) => ({ ...editor, segments: newSegments }));
             return;
         }
 
         newSegments[clickedSegmentIndex] = { ...segment, included: false };
-        updateTask(taskId, (currentTask) => ({ ...currentTask, editor: { ...currentTask.editor, segments: newSegments } }));
-    }, [containerRef, currentToolRef, duration, getTimelineMetrics, task, taskId, updateTask, wavesurferRef]);
+        updateEditorSession(assetId, (editor) => ({ ...editor, segments: newSegments }));
+    }, [assetId, containerRef, currentTool, duration, entry, getTimelineMetrics, updateEditorSession, wavesurferRef]);
 
     const handleContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         event.preventDefault();
-        const segments = task?.editor.segments ?? [];
+        const segments = entry?.editorSession.segments ?? [];
         if (!wavesurferRef.current || segments.length <= 1 || !containerRef.current) {
             return;
         }
@@ -101,7 +103,7 @@ export function useSegmentEditor({
 
         const xPos = event.clientX - rect.left + scrollLeft;
         const clickTime = (xPos / totalWidth) * duration;
-        const activeTrim = task?.editor.trimRange ?? { start: 0, end: duration };
+        const activeTrim = entry?.editorSession.trimRange ?? { start: 0, end: duration };
         if (clickTime < activeTrim.start || clickTime > activeTrim.end) {
             return;
         }
@@ -110,11 +112,11 @@ export function useSegmentEditor({
         let closestIndex = -1;
         let minDiff = Infinity;
 
-        for (let i = 0; i < segments.length - 1; i += 1) {
-            const diff = Math.abs(segments[i].end - clickTime);
+        for (let index = 0; index < segments.length - 1; index += 1) {
+            const diff = Math.abs(segments[index].end - clickTime);
             if (diff < minDiff && diff < timeThreshold) {
                 minDiff = diff;
-                closestIndex = i;
+                closestIndex = index;
             }
         }
 
@@ -132,11 +134,11 @@ export function useSegmentEditor({
             included: leftSegment.included,
         };
         newSegments.splice(closestIndex, 2, mergedSegment);
-        updateTask(taskId, (currentTask) => ({ ...currentTask, editor: { ...currentTask.editor, segments: newSegments } }));
-    }, [containerRef, duration, getTimelineMetrics, task, taskId, updateTask, wavesurferRef]);
+        updateEditorSession(assetId, (editor) => ({ ...editor, segments: newSegments }));
+    }, [assetId, containerRef, duration, entry, getTimelineMetrics, updateEditorSession, wavesurferRef]);
 
     const handleMouseMoveOverlay = useCallback((event: MouseEvent) => {
-        const segments = task?.editor.segments ?? [];
+        const segments = entry?.editorSession.segments ?? [];
         if (!draggingBoundary || !wavesurferRef.current || !duration || segments.length === 0 || !containerRef.current) {
             return;
         }
@@ -168,11 +170,11 @@ export function useSegmentEditor({
             newSegments[draggingBoundary.index] = { ...leftSegment, end: clampedTime };
             newSegments[draggingBoundary.index + 1] = { ...rightSegment, start: clampedTime };
             setDragTooltip({ time: clampedTime, leftPx: tooltipLeftPx });
-            updateTask(taskId, (currentTask) => ({ ...currentTask, editor: { ...currentTask.editor, segments: newSegments } }));
+            updateEditorSession(assetId, (editor) => ({ ...editor, segments: newSegments }));
             return;
         }
 
-        const existingTrim = task?.editor.trimRange ?? { start: 0, end: duration };
+        const existingTrim = entry?.editorSession.trimRange ?? { start: 0, end: duration };
         const minTrimDuration = 0.1;
         let trimStart = existingTrim.start;
         let trimEnd = existingTrim.end;
@@ -190,13 +192,18 @@ export function useSegmentEditor({
         const tooltipLeftPx = (tooltipTime / duration) * totalWidth;
 
         setDragTooltip({ time: tooltipTime, leftPx: tooltipLeftPx });
-        updateTask(taskId, (currentTask) => ({ ...currentTask, editor: { ...currentTask.editor, trimRange: nextTrim } }));
-    }, [containerRef, draggingBoundary, duration, getTimelineMetrics, task, taskId, updateTask, wavesurferRef]);
+        updateEditorSession(assetId, (editor) => ({ ...editor, trimRange: nextTrim }));
+    }, [assetId, containerRef, draggingBoundary, duration, entry, getTimelineMetrics, updateEditorSession, wavesurferRef]);
 
     const handleMouseUpOverlay = useCallback(() => {
         setDraggingBoundary(null);
         setDragTooltip(null);
     }, []);
+
+    useEffect(() => {
+        setDraggingBoundary(null);
+        setDragTooltip(null);
+    }, [assetId]);
 
     useEffect(() => {
         if (draggingBoundary !== null) {
