@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from audioscribe.application.commands import ExportArtifactCommand, ImportAssetCommand, StartWorkflowRunCommand, WorkbenchCommandHandlers
 from audioscribe.application.queries import WorkbenchQueries
@@ -44,6 +45,22 @@ command_handlers = WorkbenchCommandHandlers(
     runtime_supervisor=runtime_supervisor,
 )
 query_handlers = WorkbenchQueries(workflow_repository=workflow_repository, runtime_supervisor=runtime_supervisor)
+
+
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:1420",
+    "http://127.0.0.1:1420",
+    "tauri://localhost",
+    "https://tauri.localhost",
+]
+
+
+def resolve_allowed_origins() -> list[str]:
+    configured = os.environ.get("AUDIOSCRIBE_ALLOWED_ORIGINS", "")
+    origins = [origin.strip() for origin in configured.split(",") if origin.strip()]
+    if not origins:
+        return DEFAULT_ALLOWED_ORIGINS.copy()
+    return origins
 
 
 def map_editor_selection(selection: EditorSelection) -> EditorSelectionPayload:
@@ -113,6 +130,13 @@ def map_draft(payload) -> WorkflowDraft:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="AudioScribe Workflow Engine", version="3.0.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=resolve_allowed_origins(),
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health", response_model=HealthResponse)
     def health_check() -> HealthResponse:
