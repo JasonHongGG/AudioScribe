@@ -38,9 +38,7 @@ export function TranscriptResultPanel({ entry, isOpen, height, currentTime, onSe
     const runId = entry.latestRun?.runId ?? null;
     const [actionError, setActionError] = useState<string | null>(null);
     const [isExporting, setIsExporting] = useState(false);
-    const cueRefs = useRef<Record<string, HTMLDivElement | null>>({});
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-    const wheelDeltaAccumulatorRef = useRef(0);
 
     const canLoadTranscript = entry.latestRun?.status === 'completed' && !!runId;
     const { document, cues, isLoading, error } = useTranscriptDocument({
@@ -50,58 +48,24 @@ export function TranscriptResultPanel({ entry, isOpen, height, currentTime, onSe
     });
     const activeCueIndex = useMemo(() => findActiveTranscriptCueIndex(cues, currentTime), [cues, currentTime]);
 
-    const resolveCueScrollTop = (container: HTMLDivElement, cueElement: HTMLDivElement) => {
-        const containerRect = container.getBoundingClientRect();
-        const cueRect = cueElement.getBoundingClientRect();
-        return container.scrollTop + (cueRect.top - containerRect.top);
-    };
-
     const handleTranscriptWheel = (event: React.WheelEvent<HTMLDivElement>) => {
         const container = scrollContainerRef.current;
-        if (!container || cues.length === 0) {
+        if (!container) {
             return;
         }
-
-        const deltaThreshold = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 48 : 1;
 
         event.preventDefault();
-        wheelDeltaAccumulatorRef.current += event.deltaY;
 
-        if (Math.abs(wheelDeltaAccumulatorRef.current) < deltaThreshold) {
-            return;
-        }
+        const normalizedDelta = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL
+            ? event.deltaY
+            : event.deltaMode === WheelEvent.DOM_DELTA_LINE
+                ? event.deltaY * 16
+                : event.deltaY * container.clientHeight;
 
-        const direction = Math.sign(wheelDeltaAccumulatorRef.current);
-        wheelDeltaAccumulatorRef.current = 0;
-
-        const cuePositions = cues
-            .map((cue) => {
-                const element = cueRefs.current[cue.id];
-                if (!element) {
-                    return null;
-                }
-                return {
-                    id: cue.id,
-                    top: resolveCueScrollTop(container, element),
-                };
-            })
-            .filter((item): item is { id: string; top: number } => item !== null);
-
-        if (cuePositions.length === 0) {
-            return;
-        }
-
-        const currentTop = container.scrollTop;
-        const threshold = 4;
-
-        if (direction > 0) {
-            const nextCue = cuePositions.find((cue) => cue.top > currentTop + threshold);
-            container.scrollTo({ top: nextCue?.top ?? cuePositions[cuePositions.length - 1].top, behavior: 'auto' });
-            return;
-        }
-
-        const previousCue = [...cuePositions].reverse().find((cue) => cue.top < currentTop - threshold);
-        container.scrollTo({ top: previousCue?.top ?? cuePositions[0].top, behavior: 'auto' });
+        container.scrollBy({
+            top: normalizedDelta * 0.35,
+            behavior: 'auto',
+        });
     };
 
     const handleReveal = async () => {
@@ -198,9 +162,6 @@ export function TranscriptResultPanel({ entry, isOpen, height, currentTime, onSe
                                     return (
                                         <div
                                             key={cue.id}
-                                            ref={(node) => {
-                                                cueRefs.current[cue.id] = node;
-                                            }}
                                             className={isActive
                                                 ? 'grid grid-cols-[max-content_minmax(0,1fr)] items-start gap-3 rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 shadow-[0_0_18px_rgba(250,204,21,0.07)] transition-colors'
                                                 : 'grid grid-cols-[max-content_minmax(0,1fr)] items-start gap-3 rounded-xl border border-transparent px-3 py-2 transition-colors hover:border-white/[0.06] hover:bg-white/[0.02]'}
